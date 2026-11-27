@@ -1,23 +1,25 @@
 import { lazyWithRetry } from '../lib/lazyWithRetry';
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { db, callRpc } from '../lib/db';
-import { Product, Quote, QuoteItem, QuoteStatus, Customer } from '../types';
-import { formatCurrency, cn, todayString } from '../lib/utils';
+import { CatalogConfig, Product, Quote, QuoteItem, QuoteStatus, Customer } from '../types';
+import { formatCurrency, cn } from '../lib/utils';
 import {
   Plus, Search, Filter, Edit2, Trash2, Share2, ChevronDown,
-  FileText, Copy, MessageCircle, Mail, Check, X, UserPlus, ArrowRight,
-  CheckCircle2, Clock
+  FileText, Copy, MessageCircle, Check, X, UserPlus, ArrowRight,
+  CheckCircle2, Clock, Eye, Download, Printer, RefreshCw
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import ProductSearchSelect from '../components/ProductSearchSelect';
+import ProductThumbnail from '../components/stock/ProductThumbnail';
+import QuoteDocument from '../components/quotes/QuoteDocument';
+import { buildQuotePdfBlob } from '../lib/quotePdf';
 import NumberField from '../components/NumberField';
 import MoneyInput from '../components/MoneyInput';
-import { motion, AnimatePresence } from 'motion/react';
 import '../styles/business-redesign.css';
 import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -66,6 +68,7 @@ export default function Quotes() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [catalogConfig, setCatalogConfig] = useState<CatalogConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -88,6 +91,8 @@ export default function Quotes() {
   const [formShippingAmount, setFormShippingAmount] = useState(0);
   const [formValidDays, setFormValidDays] = useState<7 | 15 | 30>(15);
   const [formNotes, setFormNotes] = useState('');
+  const [formInternalNotes, setFormInternalNotes] = useState('');
+  const [renewalRequested, setRenewalRequested] = useState(false);
   const [items, setItems] = useState<QuoteItem[]>([]);
 
   // Client search inside modal
@@ -102,11 +107,21 @@ export default function Quotes() {
   const [addProductId, setAddProductId] = useState('');
   const [addQty, setAddQty] = useState(1);
   const [addPrice, setAddPrice] = useState(0);
+  const [addAvailability, setAddAvailability] = useState<NonNullable<QuoteItem['availability']>>('confirm');
+  const [addLeadTime, setAddLeadTime] = useState('');
+  const productSearchRef = useRef<HTMLDivElement>(null);
 
   // Share modal
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [sharingQuote, setSharingQuote] = useState<Quote | null>(null);
   const [copied, setCopied] = useState(false);
+  const [whatsAppMessage, setWhatsAppMessage] = useState('');
+  const [previewQuote, setPreviewQuote] = useState<Quote | null>(null);
+  const [previewUsesForm, setPreviewUsesForm] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewTab, setPreviewTab] = useState<'customer' | 'pdf'>('customer');
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const pdfFrameRef = useRef<HTMLIFrameElement>(null);
 
   // Convert modal
   const [isConvertOpen, setIsConvertOpen] = useState(false);
@@ -119,14 +134,16 @@ export default function Quotes() {
   const fetchData = async () => {
     if (!user) return;
     try {
-      const [q, p, c] = await Promise.all([
+      const [q, p, c, catalog] = await Promise.all([
         db.list<Quote>('quotes', user.uid),
         db.list<Product>('products', user.uid),
         db.list<Customer>('customers', user.uid),
+        db.list<CatalogConfig>('catalog_config', user.uid),
       ]);
       setQuotes(q.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
       setProducts(filterOwnInventoryProducts(p));
       setCustomers(c);
+      setCatalogConfig(catalog[0] ?? null);
     } catch (err) {
       console.error('[Quotes] fetchData error:', err);
     } finally {
@@ -139,15 +156,17 @@ export default function Quotes() {
     let cancelled = false;
     (async () => {
       try {
-        const [q, p, c] = await Promise.all([
+        const [q, p, c, catalog] = await Promise.all([
           db.list<Quote>('quotes', user.uid),
           db.list<Product>('products', user.uid),
           db.list<Customer>('customers', user.uid),
+          db.list<CatalogConfig>('catalog_config', user.uid),
         ]);
         if (cancelled) return;
         setQuotes(q.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
         setProducts(filterOwnInventoryProducts(p));
         setCustomers(c);
+        setCatalogConfig(catalog[0] ?? null);
       } catch (err) {
         if (cancelled) return;
         console.error('[Quotes] fetch error:', err);
@@ -158,10 +177,14 @@ export default function Quotes() {
     return () => { cancelled = true; };
   }, [user, refetchToken]);
 
+  useEffect(() => () => {
+    if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
+  }, [previewPdfUrl]);
+
   const filteredCustomers = useMemo(() => {
-    const q = clientSearch.toLowerCase();
+    const q = clientSearch.trim().toLocaleLowerCase('es-AR');
     if (!q) return [];
-    return customers.filter(c => c.nameLower.includes(q)).slice(0, 6);
+    return customers.filter(c => (c.nameLower || c.name.toLocaleLowerCase('es-AR')).includes(q)).slice(0, 6);
   }, [customers, clientSearch]);
 
   const subtotal = useMemo(() => items.reduce((acc, i) => acc + i.subtotal, 0), [items]);
@@ -170,6 +193,17 @@ export default function Quotes() {
     const baseTotal = subtotal * (1 - disc / 100);
     return calculateTotalWithShipping(baseTotal, shippingEnabled, formShippingAmount);
   }, [subtotal, formDiscount, shippingEnabled, formShippingAmount]);
+  const selectedProduct = useMemo(() => products.find(product => product.id === addProductId) ?? null, [products, addProductId]);
+  const previewDraftQuote = useMemo<Quote>(() => ({
+    id: editingQuote?.id ?? 'preview', ownerUid: user?.uid ?? '', number: editingQuote?.number ?? 'BORRADOR',
+    clientId: formClientId || null, clientName: formClientName.trim() || 'Cliente',
+    clientPhone: formClientPhone || undefined, clientEmail: formClientEmail || undefined,
+    items, subtotal, discount: formDiscount, shippingAmount: shippingEnabled ? formShippingAmount : 0,
+    total, status: formStatus, validDays: formValidDays,
+    expiresAt: editingQuote?.expiresAt ?? addDays(formValidDays),
+    notes: formNotes, internalNotes: formInternalNotes,
+    createdAt: editingQuote?.createdAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(),
+  }), [editingQuote, user?.uid, formClientId, formClientName, formClientPhone, formClientEmail, items, subtotal, formDiscount, shippingEnabled, formShippingAmount, total, formStatus, formValidDays, formNotes, formInternalNotes]);
 
   const filteredQuotes = useMemo(() => {
     return quotes.filter(q => {
@@ -208,6 +242,8 @@ export default function Quotes() {
     setFormShippingAmount(0);
     setFormValidDays(15);
     setFormNotes('');
+    setFormInternalNotes('');
+    setRenewalRequested(false);
     setItems([]);
     setClientSearch('');
     setShowNewClientForm(false);
@@ -217,6 +253,8 @@ export default function Quotes() {
     setAddProductId('');
     setAddQty(1);
     setAddPrice(0);
+    setAddAvailability('confirm');
+    setAddLeadTime('');
   };
 
   const openNew = () => {
@@ -236,7 +274,7 @@ export default function Quotes() {
   const openEdit = (q: Quote) => {
     setEditingQuote(q);
     setFormStatus(q.status);
-    setFormClientId(q.clientId);
+    setFormClientId(q.clientId ?? '');
     setFormClientName(q.clientName);
     setFormClientPhone(q.clientPhone || '');
     setFormClientEmail(q.clientEmail || '');
@@ -244,13 +282,17 @@ export default function Quotes() {
     setFormShippingAmount(Number(q.shippingAmount) || 0);
     setShippingEnabled(Number(q.shippingAmount) > 0);
     setFormValidDays(q.validDays);
-    setFormNotes(q.notes);
+    setFormNotes(q.notes || '');
+    setFormInternalNotes(q.internalNotes || '');
+    setRenewalRequested(false);
     setItems(q.items);
     setClientSearch('');
     setShowNewClientForm(false);
     setAddProductId('');
     setAddQty(1);
     setAddPrice(0);
+    setAddAvailability('confirm');
+    setAddLeadTime('');
     setIsModalOpen(true);
   };
 
@@ -258,20 +300,24 @@ export default function Quotes() {
     if (!productId) {
       setAddProductId('');
       setAddPrice(0);
+      setAddAvailability('confirm');
+      setAddLeadTime('');
       return;
     }
     const p = products.find(x => x.id === productId);
     if (p) {
       setAddProductId(productId);
       setAddPrice(p.salePrice);
+      setAddAvailability(p.stock > 0 ? 'immediate' : 'confirm');
+      setAddLeadTime('');
     }
   };
 
   const handleAddItem = () => {
     if (!addProductId || addQty <= 0 || addPrice <= 0) return;
-    const p = products.find(x => x.id === addProductId);
-    if (!p) return;
-    const existing = items.findIndex(i => i.productId === addProductId);
+    const product = products.find(item => item.id === addProductId);
+    if (!product) return;
+    const existing = items.findIndex(item => item.productId === addProductId);
     if (existing >= 0) {
       const updated = [...items];
       const newQty = updated[existing].quantity + addQty;
@@ -280,20 +326,27 @@ export default function Quotes() {
         quantity: newQty,
         unitPrice: addPrice,
         subtotal: newQty * addPrice,
+        availability: addAvailability,
+        leadTime: addLeadTime.trim() || updated[existing].leadTime,
       };
       setItems(updated);
     } else {
-      setItems(prev => [...prev, {
+      setItems(current => [...current, {
         productId: addProductId,
-        productName: p.name,
+        productName: product.name,
         quantity: addQty,
         unitPrice: addPrice,
         subtotal: addQty * addPrice,
+        availability: addAvailability,
+        leadTime: addLeadTime.trim() || undefined,
       }]);
     }
     setAddProductId('');
     setAddQty(1);
     setAddPrice(0);
+    setAddAvailability('confirm');
+    setAddLeadTime('');
+    window.requestAnimationFrame(() => productSearchRef.current?.querySelector('input')?.focus());
   };
 
   const handleUpdateItemQty = (idx: number, qty: number) => {
@@ -352,51 +405,31 @@ export default function Quotes() {
     setSaving(true);
     try {
       const now = new Date().toISOString();
-      const expiresAt = addDays(formValidDays);
-
+      const expiresAt = editingQuote && !renewalRequested ? editingQuote.expiresAt : addDays(formValidDays);
+      const quoteData = {
+        clientId: formClientId || null,
+        clientName: formClientName.trim(),
+        clientPhone: formClientPhone || undefined,
+        clientEmail: formClientEmail || undefined,
+        items, subtotal, discount: formDiscount,
+        shippingAmount: shippingEnabled ? formShippingAmount : 0,
+        total, status: formStatus, validDays: formValidDays, expiresAt,
+        notes: formNotes.trim(), internalNotes: formInternalNotes.trim(), updatedAt: now,
+      };
       if (editingQuote) {
-        await db.update<Quote>('quotes', editingQuote.id, {
-          clientId: formClientId,
-          clientName: formClientName,
-          clientPhone: formClientPhone || undefined,
-          clientEmail: formClientEmail || undefined,
-          items,
-          subtotal,
-          discount: formDiscount,
-          shippingAmount: shippingEnabled ? formShippingAmount : 0,
-          total,
-          status: formStatus,
-          validDays: formValidDays,
-          expiresAt,
-          notes: formNotes,
-          updatedAt: now,
-        });
+        await db.update<Quote>('quotes', editingQuote.id, quoteData);
       } else {
         const number = await generateNumber();
         await db.create<Quote>('quotes', {
-          id: crypto.randomUUID(),
-          ownerUid: user.uid,
-          number,
-          clientId: formClientId,
-          clientName: formClientName,
-          clientPhone: formClientPhone || undefined,
-          clientEmail: formClientEmail || undefined,
-          items,
-          subtotal,
-          discount: formDiscount,
-          shippingAmount: shippingEnabled ? formShippingAmount : 0,
-          total,
-          status: formStatus,
-          validDays: formValidDays,
-          expiresAt,
-          notes: formNotes,
-          createdAt: now,
-          updatedAt: now,
+          id: crypto.randomUUID(), ownerUid: user.uid, number, ...quoteData, createdAt: now,
         });
       }
       setIsModalOpen(false);
       resetForm();
       fetchData();
+    } catch (error) {
+      console.error('[Quotes] Error al guardar:', error);
+      alert(error instanceof Error ? error.message : 'No se pudo guardar el presupuesto.');
     } finally {
       setSaving(false);
     }
@@ -423,19 +456,119 @@ export default function Quotes() {
     fetchData();
   };
 
+  const shareUrl = (q: Quote) => window.location.origin + '/presupuesto/' + q.id;
+  const makeWhatsAppMessage = (q: Quote) => {
+    const business = catalogConfig?.businessName || 'RivaTech';
+    const productsText = q.items.map(item => item.productName + ' x' + item.quantity).join(', ');
+    const discountText = q.discount > 0 ? 'Incluye un ' + q.discount + ' % de descuento.' : '';
+    const shippingText = Number(q.shippingAmount) > 0 ? 'Envío: ' + formatCurrency(Number(q.shippingAmount)) + '.' : '';
+    const expiry = new Date(q.expiresAt).toLocaleDateString('es-AR');
+    return [
+      'Hola, ' + q.clientName + ' 👋 Te paso el presupuesto de ' + business + (productsText ? ' por ' + productsText + '.' : '.'),
+      '',
+      'Total con envío: ' + formatCurrency(q.total),
+      [discountText, shippingText].filter(Boolean).join(' '),
+      '',
+      'Podés ver el detalle acá: ' + shareUrl(q),
+      q.number + ' · Válido hasta el ' + expiry + '.',
+      '',
+      'Si te sirve, respondeme por acá y coordinamos.',
+    ].join('\n');
+  };
+
   const openShare = (q: Quote) => {
     setSharingQuote(q);
+    setWhatsAppMessage(makeWhatsAppMessage(q));
     setCopied(false);
     setIsShareOpen(true);
   };
-
-  const shareUrl = (q: Quote) => `${window.location.origin}/presupuesto/${q.id}`;
 
   const handleCopyLink = async () => {
     if (!sharingQuote) return;
     await navigator.clipboard.writeText(shareUrl(sharingQuote));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openPreview = (q: Quote, fromForm = false) => {
+    setPreviewQuote(q);
+    setPreviewUsesForm(fromForm);
+    setPreviewTab('customer');
+    setIsPreviewOpen(true);
+    setIsModalOpen(false);
+  };
+
+  const closePreview = () => {
+    setIsPreviewOpen(false);
+    setPreviewPdfUrl(current => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    if (previewUsesForm) setIsModalOpen(true);
+    setPreviewUsesForm(false);
+  };
+
+  const preparePreviewPdf = async () => {
+    if (!previewQuote) return null;
+    const blob = await buildQuotePdfBlob(previewQuote, catalogConfig?.businessName || 'RivaTech', '$', catalogConfig?.logoUrl);
+    const url = URL.createObjectURL(blob);
+    setPreviewPdfUrl(current => {
+      if (current) URL.revokeObjectURL(current);
+      return url;
+    });
+    return url;
+  };
+
+  const showPreviewPdf = async () => {
+    setPreviewTab('pdf');
+    try {
+      await preparePreviewPdf();
+    } catch (error) {
+      console.error('[Quotes] Error al generar PDF:', error);
+      alert('No se pudo generar el PDF del presupuesto.');
+    }
+  };
+
+  const downloadPreviewPdf = async () => {
+    try {
+      const url = previewPdfUrl || await preparePreviewPdf();
+      if (!url || !previewQuote) return;
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = previewQuote.number + '.pdf';
+      link.click();
+    } catch (error) {
+      console.error('[Quotes] Error al descargar PDF:', error);
+      alert('No se pudo descargar el PDF del presupuesto.');
+    }
+  };
+
+  const handleRenewQuote = async (quote: Quote) => {
+    if (!user || !canWrite) return;
+    if (!confirm('¿Renovar ' + quote.number + ' por ' + quote.validDays + ' días desde hoy?')) return;
+    try {
+      await db.update<Quote>('quotes', quote.id, {
+        expiresAt: addDays(quote.validDays),
+        status: quote.status === 'expired' ? 'sent' : quote.status,
+        updatedAt: new Date().toISOString(),
+      });
+      await fetchData();
+    } catch (error) {
+      console.error('[Quotes] Error al renovar:', error);
+      alert(error instanceof Error ? error.message : 'No se pudo renovar el presupuesto.');
+    }
+  };
+
+  const handleShareByWhatsApp = () => {
+    window.open('https://wa.me/?text=' + encodeURIComponent(whatsAppMessage), '_blank', 'noopener,noreferrer');
+  };
+
+  const handleAddSelectedFromPreview = () => {
+    if (!selectedProduct || !previewUsesForm) return;
+    handleAddItem();
+    setIsPreviewOpen(false);
+    setIsModalOpen(true);
+    setPreviewUsesForm(false);
   };
 
   const openConvert = (q: Quote) => {
@@ -488,520 +621,209 @@ export default function Quotes() {
         onStatusFilter={setStatusFilter}
         onNew={openNew}
         onEdit={openEdit}
+        onPreview={quote => openPreview(quote)}
         onShare={openShare}
+        onRenew={handleRenewQuote}
         onConvert={openConvert}
         onDelete={setQuoteToDelete}
         effectiveStatus={getEffectiveStatus}
       /> : <>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Presupuestos</h2>
-          <p className="text-slate-500 dark:text-slate-400">Crea y compartí presupuestos con tus clientes</p>
-        </div>
-        <button
-          onClick={openNew}
-          disabled={!canWrite}
-          title={!canWrite ? 'Sin permiso' : undefined}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Plus size={20} />
-          Nuevo Presupuesto
-        </button>
-      </div>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Presupuestos</h1>
+            <p className="text-slate-500 dark:text-slate-400">Creá, revisá y compartí presupuestos con tus clientes.</p>
+          </div>
+          <button type="button" onClick={openNew} disabled={!canWrite} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 font-semibold text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50">
+            <Plus size={18} /> Nuevo presupuesto
+          </button>
+        </header>
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="relative md:col-span-2">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            type="text"
-            placeholder="Buscar por cliente o número..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-          />
-        </div>
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value as any)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white appearance-none"
-          >
-            <option value="all">Todos los estados</option>
-            <option value="draft">Borrador</option>
-            <option value="sent">Enviado</option>
-            <option value="accepted">Aceptado</option>
-            <option value="rejected">Rechazado</option>
-            <option value="expired">Vencido</option>
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-        </div>
-      </div>
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <label className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-900">
+            <Search size={17} className="shrink-0 text-slate-400" />
+            <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por cliente o número..." className="min-w-0 flex-1 bg-transparent text-sm outline-none dark:text-white" />
+          </label>
+          <div className="relative">
+            <Filter size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value as 'all' | QuoteStatus)} className="min-h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-sm dark:border-slate-800 dark:bg-slate-900 dark:text-white">
+              <option value="all">Todos los estados</option>
+              <option value="draft">Borrador</option>
+              <option value="sent">Enviado</option>
+              <option value="accepted">Aceptado</option>
+              <option value="rejected">Rechazado</option>
+              <option value="expired">Vencido</option>
+            </select>
+            <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          </div>
+        </section>
 
-      {/* Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
-              <tr>
-                <th className="px-6 py-4">Número</th>
-                <th className="px-6 py-4">Cliente</th>
-                <th className="px-6 py-4">Total</th>
-                <th className="px-6 py-4">Estado</th>
-                <th className="px-6 py-4">Vencimiento</th>
-                <th className="px-6 py-4 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {pagination.rows.map(q => {
-                const effective = getEffectiveStatus(q);
-                const expiresDate = new Date(q.expiresAt);
-                const daysLeft = Math.ceil((expiresDate.getTime() - Date.now()) / 86400000);
-                return (
-                  <tr key={q.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <FileText size={16} className="text-slate-400" />
-                        <span className="font-bold text-slate-900 dark:text-white">{q.number}</span>
-                      </div>
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+                <tr><th className="px-5 py-3">Número</th><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Total</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3">Vencimiento</th><th className="px-5 py-3 text-right">Acciones</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {pagination.rows.map(quote => {
+                  const status = getEffectiveStatus(quote);
+                  const expires = new Date(quote.expiresAt);
+                  const daysLeft = Math.ceil((expires.getTime() - Date.now()) / 86400000);
+                  return <tr key={quote.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="px-5 py-4">
+                      <button type="button" onClick={() => openPreview(quote)} className="font-bold text-indigo-700 hover:underline dark:text-indigo-300">{quote.number}</button>
+                      <p className="text-xs text-slate-400">{quote.items.length} {quote.items.length === 1 ? 'producto' : 'productos'}</p>
                     </td>
-                    <td className="px-6 py-4">
-                      <p className="font-medium text-slate-900 dark:text-white">{q.clientName}</p>
-                      {q.clientPhone && <p className="text-xs text-slate-400">{q.clientPhone}</p>}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">
-                      {formatCurrency(q.total)}
-                      {q.discount > 0 && <span className="ml-1 text-xs text-emerald-600 font-medium">-{q.discount}%</span>}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn('px-2 py-1 rounded-full text-[10px] font-bold uppercase', STATUS_COLORS[effective])}>
-                        {STATUS_LABELS[effective]}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs">
-                      <div>{expiresDate.toLocaleDateString('es-AR')}</div>
-                      {effective !== 'accepted' && effective !== 'rejected' && daysLeft > 0 && daysLeft <= 3 && (
-                        <span className="text-orange-600 font-bold">¡{daysLeft}d!</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openShare(q)}
-                          disabled={!canWrite}
-                          title={!canWrite ? 'Sin permiso' : 'Compartir'}
-                          className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Share2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => openEdit(q)}
-                          disabled={!canWrite}
-                          title={!canWrite ? 'Sin permiso' : 'Editar'}
-                          className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        {(effective === 'accepted' && !q.convertedToSaleId) && (
-                          <button
-                            onClick={() => openConvert(q)}
-                            disabled={!canWrite}
-                            title={!canWrite ? 'Sin permiso' : 'Convertir a venta'}
-                            className="p-2 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <ArrowRight size={16} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDelete(q)}
-                          disabled={!canDelete}
-                          title={!canDelete ? 'Sin permiso' : 'Eliminar'}
-                          className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredQuotes.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                    {quotes.length === 0
-                      ? 'Todavía no creaste presupuestos. Creá el primero desde Nuevo Presupuesto.'
-                      : 'No hay presupuestos que coincidan con los filtros aplicados.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          <Pagination {...pagination} />
-        </div>
-      </div>
+                    <td className="px-5 py-4"><p className="font-medium text-slate-900 dark:text-white">{quote.clientName}</p>{quote.clientPhone && <p className="text-xs text-slate-400">{quote.clientPhone}</p>}</td>
+                    <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">{formatCurrency(quote.total)}{quote.discount > 0 && <span className="ml-1 text-xs font-semibold text-emerald-600">−{quote.discount}%</span>}</td>
+                    <td className="px-5 py-4"><span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase', STATUS_COLORS[status])}>{STATUS_LABELS[status]}</span></td>
+                    <td className="px-5 py-4 text-xs text-slate-600 dark:text-slate-400">{expires.toLocaleDateString('es-AR')}{daysLeft > 0 && daysLeft <= 3 && !['accepted', 'rejected'].includes(status) && <span className="ml-1 font-bold text-amber-600">· {daysLeft}d</span>}</td>
+                    <td className="px-5 py-4"><div className="flex items-center justify-end gap-1">
+                      <button type="button" onClick={() => openPreview(quote)} title="Vista previa" className="rounded-lg p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-slate-800"><Eye size={17} /></button>
+                      <button type="button" onClick={() => openShare(quote)} title="Compartir" disabled={!canWrite} className="rounded-lg p-2 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-40"><Share2 size={17} /></button>
+                      <button type="button" onClick={() => openEdit(quote)} title="Editar" disabled={!canWrite} className="rounded-lg p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-40"><Edit2 size={17} /></button>
+                      {!['accepted', 'rejected'].includes(status) && <button type="button" onClick={() => handleRenewQuote(quote)} title="Renovar presupuesto" disabled={!canWrite} className="rounded-lg p-2 text-slate-400 hover:bg-amber-50 hover:text-amber-600 disabled:opacity-40"><RefreshCw size={16} /></button>}
+                      {status === 'accepted' && !quote.convertedToSaleId && <button type="button" onClick={() => openConvert(quote)} title="Convertir a venta" disabled={!canWrite} className="rounded-lg p-2 text-slate-400 hover:text-emerald-600 disabled:opacity-40"><ArrowRight size={17} /></button>}
+                      <button type="button" onClick={() => handleDelete(quote)} title="Eliminar" disabled={!canDelete} className="rounded-lg p-2 text-slate-400 hover:text-rose-600 disabled:opacity-40"><Trash2 size={16} /></button>
+                    </div></td>
+                  </tr>;
+                })}
+                {filteredQuotes.length === 0 && <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-500">{quotes.length === 0 ? 'Todavía no creaste presupuestos.' : 'No hay presupuestos que coincidan con los filtros.'}</td></tr>}
+              </tbody>
+            </table>
+            <Pagination {...pagination} />
+          </div>
+        </section>
       </>}
 
-      {/* Create/Edit Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); resetForm(); }}
-        title={editingQuote ? `Editar ${editingQuote.number}` : 'Nuevo Presupuesto'}
-        className="max-w-3xl"
-      >
-        <form onSubmit={handleSave} className="space-y-6">
-          {/* Client */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cliente</label>
-            {formClientName ? (
-              <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl">
-                <div>
-                  <p className="font-bold text-indigo-800 dark:text-indigo-300">{formClientName}</p>
-                  {formClientPhone && <p className="text-xs text-indigo-600 dark:text-indigo-400">{formClientPhone}</p>}
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingQuote ? 'Editar ' + editingQuote.number : 'Nuevo presupuesto'} className="max-w-4xl">
+        <form onSubmit={handleSave} className="flex max-h-[82dvh] flex-col">
+          <div className="min-h-0 space-y-5 overflow-y-auto px-1 pb-5">
+            <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+              <h3 className="mb-3 text-sm font-bold text-slate-900 dark:text-white">Datos del presupuesto</h3>
+              <div className="mb-3 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
+                <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Número</p><p className="mt-1 text-sm font-bold text-slate-900 dark:text-white">{editingQuote?.number || 'Se asigna al guardar'}</p></div>
+                <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Fecha de emisión</p><p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{new Date(editingQuote?.createdAt || Date.now()).toLocaleDateString('es-AR')}</p></div>
+              </div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Cliente</label>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input autoComplete="off" value={formClientName} onChange={event => {
+                  const value = event.target.value;
+                  setFormClientName(value);
+                  setClientSearch(value);
+                  if (value !== formClientName) {
+                    setFormClientId('');
+                    setFormClientPhone('');
+                    setFormClientEmail('');
+                  }
+                }} placeholder="Buscar cliente o escribir nombre" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                {clientSearch.trim() && filteredCustomers.length > 0 && <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  {filteredCustomers.map(customer => <button key={customer.id} type="button" onClick={() => handleSelectClient(customer)} className="flex min-h-12 w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800">
+                    <span><span className="block text-sm font-semibold text-slate-900 dark:text-white">{customer.name}</span><span className="text-xs text-slate-500">{customer.phone || customer.email || 'Cliente guardado'}</span></span><Check size={16} className="shrink-0 text-emerald-500" />
+                  </button>)}
+                </div>}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-slate-500">{formClientId ? 'Cliente de la agenda seleccionado.' : 'Este nombre se usa solo en el presupuesto.'}</p>
+                <button type="button" onClick={() => { setNewClientName(formClientName.trim()); setNewClientPhone(formClientPhone); setNewClientEmail(formClientEmail); setShowNewClientForm(value => !value); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-indigo-700 dark:border-slate-700 dark:text-indigo-300"><UserPlus size={14} /> Crear en agenda</button>
+              </div>
+              {formClientId && <button type="button" onClick={() => { setFormClientId(''); setFormClientPhone(''); setFormClientEmail(''); }} className="mt-2 text-xs font-semibold text-slate-500 underline">Usar solo el nombre en este presupuesto</button>}
+              {showNewClientForm && <div className="mt-3 grid gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70 sm:grid-cols-2">
+                <input value={newClientName} onChange={event => setNewClientName(event.target.value)} placeholder="Nombre *" className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                <input value={newClientPhone} onChange={event => setNewClientPhone(event.target.value)} placeholder="Teléfono" className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                <input type="email" value={newClientEmail} onChange={event => setNewClientEmail(event.target.value)} placeholder="Email" className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                <div className="flex gap-2"><button type="button" onClick={() => setShowNewClientForm(false)} className="min-h-10 flex-1 rounded-lg border border-slate-200 text-sm dark:border-slate-700">Cancelar</button><button type="button" disabled={savingClient || !newClientName.trim()} onClick={handleCreateClient} className="min-h-10 flex-1 rounded-lg bg-indigo-600 text-sm font-semibold text-white disabled:opacity-50">{savingClient ? 'Guardando…' : 'Guardar en agenda'}</button></div>
+              </div>}
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+              <h3 className="mb-3 text-sm font-bold text-slate-900 dark:text-white">Productos</h3>
+              <div className="grid grid-cols-[minmax(0,1fr)_76px_auto] items-end gap-2">
+                <div ref={productSearchRef} className="min-w-0">
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Buscar producto</label>
+                  <ProductSearchSelect products={products} inventoryOwners={inventoryOwners} value={addProductId} onChange={handleSelectProduct} placeholder="Buscar producto…" />
                 </div>
-                <button type="button" onClick={() => { setFormClientId(''); setFormClientName(''); setFormClientPhone(''); setFormClientEmail(''); }} className="text-indigo-400 hover:text-indigo-700">
-                  <X size={18} />
-                </button>
+                <div><label className="mb-1 block text-xs font-semibold text-slate-500">Cantidad</label><NumberField min="1" integer aria-label="Cantidad a agregar" value={addQty} onChange={event => setAddQty(Number(event.target.value))} className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-2 text-center text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></div>
+                <button type="button" onClick={handleAddItem} disabled={!canWrite || !selectedProduct} className="inline-flex h-11 items-center justify-center gap-1 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white disabled:opacity-40"><Plus size={16} /> <span className="hidden sm:inline">Agregar producto</span><span className="sm:hidden">Agregar</span></button>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="relative">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Buscar cliente..."
-                    value={clientSearch}
-                    onChange={e => { setClientSearch(e.target.value); setShowNewClientForm(false); }}
-                    className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white text-sm"
-                  />
+              {selectedProduct && <div className="mt-3 flex flex-col gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70 sm:flex-row sm:items-center">
+                <ProductThumbnail product={selectedProduct} sizeClassName="h-14 w-14" />
+                <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900 dark:text-white">{selectedProduct.name}</p><p className="text-sm text-slate-600 dark:text-slate-300">{formatCurrency(addPrice)} · Stock actual: {selectedProduct.stock}</p></div>
+                <div className="grid min-w-0 gap-2 sm:w-64">
+                  <select aria-label="Disponibilidad del producto" value={addAvailability} onChange={event => setAddAvailability(event.target.value as NonNullable<QuoteItem['availability']>)} className="h-10 rounded-lg border border-slate-200 bg-white px-2 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="immediate">Entrega inmediata</option><option value="on_order">Bajo pedido</option><option value="confirm">Disponibilidad a confirmar</option></select>
+                  {addAvailability === 'on_order' && <input value={addLeadTime} onChange={event => setAddLeadTime(event.target.value)} placeholder="Plazo estimado (opcional)" className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" />}
                 </div>
-                {filteredCustomers.length > 0 && (
-                  <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-                    {filteredCustomers.map(c => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => handleSelectClient(c)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-0 transition-colors"
-                      >
-                        <p className="font-medium text-slate-900 dark:text-white text-sm">{c.name}</p>
-                        {c.phone && <p className="text-xs text-slate-400">{c.phone}</p>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {clientSearch.length > 0 && filteredCustomers.length === 0 && !showNewClientForm && (
-                  <button
-                    type="button"
-                    onClick={() => { setShowNewClientForm(true); setNewClientName(clientSearch); }}
-                    className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
-                  >
-                    <UserPlus size={16} />
-                    Crear cliente "{clientSearch}"
-                  </button>
-                )}
-                <AnimatePresence>
-                  {showNewClientForm && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3"
-                    >
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Nuevo cliente</p>
-                      <input
-                        type="text"
-                        placeholder="Nombre *"
-                        value={newClientName}
-                        onChange={e => setNewClientName(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                      />
-                      <input
-                        type="tel"
-                        placeholder="Teléfono"
-                        value={newClientPhone}
-                        onChange={e => setNewClientPhone(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                      />
-                      <input
-                        type="email"
-                        placeholder="Email"
-                        value={newClientEmail}
-                        onChange={e => setNewClientEmail(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                      />
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setShowNewClientForm(false)} className="flex-1 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500">Cancelar</button>
-                        <button type="button" disabled={savingClient} onClick={handleCreateClient} className="flex-1 py-2 text-sm bg-indigo-600 text-white rounded-lg font-semibold disabled:opacity-60">
-                          {savingClient ? 'Guardando...' : 'Crear'}
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                {/* Manual name entry if no customer account needed */}
-                {!showNewClientForm && (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="O escribí el nombre directamente..."
-                      value={formClientName}
-                      onChange={e => setFormClientName(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                    />
-                  </div>
-                )}
+              </div>}
+              <div className="mt-4">
+                <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Productos incluidos · {items.length}</h4>
+                {items.length === 0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-slate-800/70">Todavía no agregaste productos.</p> : <div className="space-y-2">
+                  {items.map((item, index) => {
+                    const product = products.find(value => value.id === item.productId);
+                    return <div key={item.productId + '-' + index} className="grid grid-cols-[minmax(0,1fr)_64px_104px_auto] items-center gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                      <div className="flex min-w-0 items-center gap-2">{product && <ProductThumbnail product={product} sizeClassName="h-10 w-10" />}<div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900 dark:text-white">{item.productName}</p><p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{item.availability === 'immediate' ? 'Entrega inmediata' : item.availability === 'on_order' ? 'Bajo pedido' : 'Disponibilidad a confirmar'}{item.leadTime ? ' · ' + item.leadTime : ''}</p><select aria-label={'Disponibilidad de ' + item.productName} value={item.availability || 'confirm'} onChange={event => setItems(current => current.map((line, lineIndex) => lineIndex === index ? { ...line, availability: event.target.value as NonNullable<QuoteItem['availability']> } : line))} className="mt-1 max-w-full rounded-md border border-slate-200 bg-white px-1 py-1 text-[10px] dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="immediate">Entrega inmediata</option><option value="on_order">Bajo pedido</option><option value="confirm">A confirmar</option></select>{item.availability === 'on_order' && <input aria-label={'Plazo estimado de ' + item.productName} value={item.leadTime || ''} onChange={event => setItems(current => current.map((line, lineIndex) => lineIndex === index ? { ...line, leadTime: event.target.value || undefined } : line))} placeholder="Plazo" className="mt-1 ml-1 w-24 rounded-md border border-slate-200 bg-white px-1 py-1 text-[10px] dark:border-slate-700 dark:bg-slate-900 dark:text-white" />}</div></div>
+                      <NumberField min="1" integer aria-label={'Cantidad de ' + item.productName} value={item.quantity} onChange={event => handleUpdateItemQty(index, Number(event.target.value))} className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-1 text-center text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                      <div className="min-w-0"><MoneyInput min="0" aria-label={'Precio unitario de ' + item.productName} value={item.unitPrice} onChange={event => handleUpdateItemPrice(index, Number(event.target.value))} className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2 text-right text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white" /><p className="mt-1 text-right text-xs font-bold">{formatCurrency(item.subtotal)}</p></div>
+                      <button type="button" aria-label={'Quitar ' + item.productName} onClick={() => handleRemoveItem(index)} className="rounded-lg p-2 text-slate-400 hover:text-rose-600"><X size={16} /></button>
+                    </div>;
+                  })}
+                </div>}
               </div>
-            )}
+            </section>
+
+            <section className="grid gap-4 rounded-2xl border border-slate-200 p-4 dark:border-slate-700 sm:grid-cols-2">
+              <div><label className="mb-1 block text-xs font-semibold text-slate-500">Descuento (%)</label><NumberField min="0" max="100" aria-label="Descuento porcentual" value={formDiscount} onChange={event => setFormDiscount(Math.max(0, Math.min(100, Number(event.target.value) || 0)))} className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></div>
+              <React.Suspense fallback={<div className="min-h-11" aria-label="Cargando opción de envío" />}>
+                <LazySaleShippingControl ownerUid={user?.uid} enabled={shippingEnabled} amount={formShippingAmount} onEnabledChange={setShippingEnabled} onAmountChange={setFormShippingAmount} />
+              </React.Suspense>
+              <div><label className="mb-1 block text-xs font-semibold text-slate-500">Validez</label><div className="flex gap-2">{([7, 15, 30] as const).map(days => <button key={days} type="button" onClick={() => setFormValidDays(days)} className={cn('min-h-10 flex-1 rounded-lg border text-sm font-semibold', formValidDays === days ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700')}>{days} días</button>)}</div>{editingQuote && <p className="mt-1 text-xs text-slate-500">Vence el {new Date(editingQuote.expiresAt).toLocaleDateString('es-AR')}. Cambiar validez no modifica esta fecha.</p>}</div>
+              <div><label className="mb-1 block text-xs font-semibold text-slate-500">Estado</label><select value={formStatus} onChange={event => setFormStatus(event.target.value as QuoteStatus)} className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="draft">Borrador</option><option value="sent">Enviado</option><option value="accepted">Aceptado</option><option value="rejected">Rechazado</option></select></div>
+              {editingQuote && !['accepted', 'rejected'].includes(editingQuote.status) && <div className="sm:col-span-2"><button type="button" onClick={() => setRenewalRequested(value => !value)} aria-pressed={renewalRequested} className={cn('inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold', renewalRequested ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300')}><RefreshCw size={15} /> {renewalRequested ? 'Renovación activada: vence ' + new Date(addDays(formValidDays)).toLocaleDateString('es-AR') : 'Renovar presupuesto'}</button></div>}
+            </section>
+
+            <section className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Condiciones para el cliente</label><textarea value={formNotes} onChange={event => setFormNotes(event.target.value)} rows={3} placeholder="Se mostrarán en la vista del cliente y el PDF." className="w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></div>
+              <div className="rounded-2xl border border-amber-200 p-4 dark:border-amber-900"><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Nota interna · privada</label><textarea value={formInternalNotes} onChange={event => setFormInternalNotes(event.target.value)} rows={3} placeholder="Solo visible para tu equipo. Nunca aparece en el enlace ni en el PDF." className="w-full resize-y rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 dark:border-amber-900 dark:bg-slate-800 dark:text-white" /></div>
+            </section>
           </div>
 
-          {/* Products */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Productos</label>
-            <div className="grid grid-cols-12 gap-2 mb-2">
-              <div className="col-span-8">
-                <ProductSearchSelect
-                  products={products}
-                  inventoryOwners={inventoryOwners}
-                  value={addProductId}
-                  onChange={handleSelectProduct}
-                  placeholder="Buscar producto..."
-                />
-              </div>
-              <NumberField
-                min="1"
-                integer
-                aria-label="Cantidad a agregar"
-                value={addQty}
-                onChange={e => setAddQty(Number(e.target.value))}
-                className="col-span-2 px-2 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none dark:text-white"
-                placeholder="Cant."
-              />
-              <button
-                type="button"
-                onClick={handleAddItem}
-                disabled={!canWrite}
-                title={!canWrite ? 'Sin permiso' : undefined}
-                className="col-span-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-1 hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus size={16} />
-                Agregar
-              </button>
-            </div>
-
-            {items.length > 0 && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs text-slate-500 dark:text-slate-400 uppercase">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Producto</th>
-                      <th className="px-4 py-2 text-center">Cant.</th>
-                      <th className="px-4 py-2 text-center">Precio U.</th>
-                      <th className="px-4 py-2 text-right">Subtotal</th>
-                      <th className="px-2 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {items.map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">{item.productName}</td>
-                        <td className="px-4 py-2">
-                          <NumberField
-                            min="1"
-                            integer
-                            aria-label={`Cantidad de ${item.productName}`}
-                            value={item.quantity}
-                            onChange={e => handleUpdateItemQty(idx, Number(e.target.value))}
-                            className="w-16 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none dark:text-white"
-                          />
-                        </td>
-                        <td className="px-4 py-2">
-                          <MoneyInput
-                            min="0"
-                            aria-label={`Precio unitario de ${item.productName}`}
-                            value={item.unitPrice}
-                            onChange={e => handleUpdateItemPrice(idx, Number(e.target.value))}
-                            className="w-24 text-center py-1 pr-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none dark:text-white"
-                          />
-                        </td>
-                        <td className="px-4 py-2 text-right font-bold text-slate-900 dark:text-white">{formatCurrency(item.subtotal)}</td>
-                        <td className="px-2 py-2">
-                          <button type="button" onClick={() => handleRemoveItem(idx)} className="text-slate-300 hover:text-rose-500 transition-colors">
-                            <X size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Settings row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Descuento (%)</label>
-              <NumberField
-                min="0"
-                max="100"
-                aria-label="Descuento porcentual"
-                value={formDiscount}
-                onChange={e => setFormDiscount(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-              />
-            </div>
-        <React.Suspense fallback={<div className="min-h-12" aria-label="Cargando opción de envío" />}>
-          <LazySaleShippingControl
-            ownerUid={user?.uid}
-            enabled={shippingEnabled}
-            amount={formShippingAmount}
-            onEnabledChange={setShippingEnabled}
-            onAmountChange={setFormShippingAmount}
-          />
-        </React.Suspense>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Validez</label>
-              <div className="flex gap-1">
-                {([7, 15, 30] as const).map(d => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setFormValidDays(d)}
-                    className={cn(
-                      'flex-1 py-2 rounded-lg text-sm font-semibold border transition-all',
-                      formValidDays === d ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-                    )}
-                  >
-                    {d}d
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Estado</label>
-              <select
-                value={formStatus}
-                onChange={e => setFormStatus(e.target.value as QuoteStatus)}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white"
-              >
-                <option value="draft">Borrador</option>
-                <option value="sent">Enviado</option>
-                <option value="accepted">Aceptado</option>
-                <option value="rejected">Rechazado</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Notas</label>
-            <textarea
-              value={formNotes}
-              onChange={e => setFormNotes(e.target.value)}
-              rows={2}
-              placeholder="Condiciones, observaciones..."
-              className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm resize-none"
-            />
-          </div>
-
-          {/* Total */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
-            <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400 mb-1">
-              <span>Subtotal</span>
-              <span>{formatCurrency(subtotal)}</span>
-            </div>
-            {formDiscount > 0 && (
-              <div className="flex justify-between text-sm text-emerald-600 mb-1">
-                <span>Descuento ({formDiscount}%)</span>
-                <span>-{formatCurrency(subtotal * formDiscount / 100)}</span>
-              </div>
-            )}
-            {shippingEnabled && (
-              <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300 mb-1">
-                <span>Envío</span>
-                <span>{formatCurrency(formShippingAmount)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-lg font-black text-slate-900 dark:text-white pt-2 border-t border-slate-200 dark:border-slate-700">
-              <span>Total</span>
-              <span className="text-indigo-600 dark:text-indigo-400">{formatCurrency(total)}</span>
-            </div>
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => { setIsModalOpen(false); resetForm(); }}
-              className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-60"
-            >
-              {saving ? 'Guardando...' : editingQuote ? 'Guardar Cambios' : 'Crear Presupuesto'}
-            </button>
-          </div>
+          <footer className="sticky bottom-0 z-10 -mx-1 mt-2 flex flex-wrap items-center gap-3 border-t border-slate-200 bg-white/95 px-1 py-3 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+            <div className="mr-auto min-w-[180px]"><p className="text-[10px] font-bold uppercase text-slate-500">Total con envío</p><p className="text-xl font-black text-indigo-700 dark:text-indigo-300">{formatCurrency(total)}</p><p className="text-[10px] text-slate-500">Productos {formatCurrency(subtotal)}{formDiscount > 0 ? ' · Descuento −' + formatCurrency(subtotal * formDiscount / 100) : ''}{shippingEnabled && formShippingAmount > 0 ? ' · Envío ' + formatCurrency(formShippingAmount) : ''}</p></div>
+            <button type="button" onClick={() => openPreview(previewDraftQuote, true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 px-3 text-sm font-semibold text-indigo-700 dark:border-indigo-800 dark:text-indigo-300"><Eye size={16} /> Vista previa</button>
+            <button type="submit" disabled={saving || !canWrite} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white disabled:opacity-50 sm:flex-none">{saving ? 'Guardando…' : editingQuote ? 'Guardar cambios' : 'Guardar borrador'}</button>
+          </footer>
         </form>
       </Modal>
 
-      {/* Share Modal */}
-      <Modal isOpen={isShareOpen} onClose={() => setIsShareOpen(false)} title="Compartir Presupuesto" className="max-w-md">
-        {sharingQuote && (
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Link del presupuesto:</p>
-              <div className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                <span className="flex-1 text-xs text-slate-700 dark:text-slate-300 truncate">{shareUrl(sharingQuote)}</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-2">
-              <button
-                onClick={handleCopyLink}
-                className="flex items-center justify-center gap-2 w-full py-3 bg-slate-900 dark:bg-slate-700 text-white rounded-xl font-semibold hover:bg-slate-800 transition-colors"
-              >
-                {copied ? <Check size={18} className="text-emerald-400" /> : <Copy size={18} />}
-                {copied ? 'Link copiado' : 'Copiar link'}
-              </button>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent([
-                  `Hola, te comparto el presupuesto: ${shareUrl(sharingQuote)}`,
-                  Number(sharingQuote.shippingAmount) > 0 ? `Envío: ${formatCurrency(Number(sharingQuote.shippingAmount))}` : '',
-                  `Total: ${formatCurrency(sharingQuote.total)}`,
-                ].filter(Boolean).join('\n'))}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors"
-              >
-                <MessageCircle size={18} />
-                Compartir por WhatsApp
-              </a>
-              {sharingQuote.clientEmail && (
-                <a
-                  href={`mailto:${sharingQuote.clientEmail}?subject=Presupuesto ${sharingQuote.number}&body=Hola ${sharingQuote.clientName}, te comparto el presupuesto: ${shareUrl(sharingQuote)}`}
-                  className="flex items-center justify-center gap-2 w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors"
-                >
-                  <Mail size={18} />
-                  Enviar por Email
-                </a>
-              )}
-            </div>
+      <Modal isOpen={isPreviewOpen} onClose={closePreview} title={previewQuote ? 'Vista previa · ' + previewQuote.number : 'Vista previa'} className="max-w-5xl">
+        {previewQuote && <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3 dark:border-slate-700">
+            <button type="button" onClick={() => setPreviewTab('customer')} className={cn('min-h-10 rounded-lg px-3 text-sm font-semibold', previewTab === 'customer' ? 'bg-indigo-600 text-white' : 'border border-slate-200 dark:border-slate-700')}>Vista del cliente</button>
+            <button type="button" onClick={showPreviewPdf} className={cn('min-h-10 rounded-lg px-3 text-sm font-semibold', previewTab === 'pdf' ? 'bg-indigo-600 text-white' : 'border border-slate-200 dark:border-slate-700')}><FileText size={15} className="mr-1 inline" /> Ver PDF</button>
+            {previewTab === 'pdf' && previewPdfUrl && <><button type="button" onClick={downloadPreviewPdf} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold dark:border-slate-700"><Download size={15} /> Descargar</button><button type="button" onClick={() => pdfFrameRef.current?.contentWindow?.print()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold dark:border-slate-700"><Printer size={15} /> Imprimir</button></>}
+            <span className="ml-auto text-xs text-slate-500">Total: <strong>{formatCurrency(previewQuote.total)}</strong></span>
           </div>
-        )}
+          {previewTab === 'customer' ? <div className="max-h-[65dvh] overflow-y-auto rounded-xl bg-slate-100 p-3 sm:p-5"><QuoteDocument quote={previewQuote} businessName={catalogConfig?.businessName || 'RivaTech'} currencySymbol="$" logoUrl={catalogConfig?.logoUrl} /></div> : <div className="h-[65dvh] overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700">{previewPdfUrl ? <iframe ref={pdfFrameRef} title="Vista PDF del presupuesto" src={previewPdfUrl} className="h-full w-full" /> : <div className="grid h-full place-items-center text-sm text-slate-500">Generando PDF…</div>}</div>}
+          <footer className="flex flex-wrap justify-between gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+            <div>{previewUsesForm && selectedProduct && previewTab === 'customer' && <button type="button" onClick={handleAddSelectedFromPreview} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white"><Plus size={15} /> Agregar este producto al presupuesto</button>}</div>
+            <div className="flex gap-2"><button type="button" onClick={closePreview} className="min-h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold dark:border-slate-700">{previewUsesForm ? 'Volver a editar' : 'Cerrar'}</button>{!previewUsesForm && <button type="button" onClick={() => { openEdit(previewQuote); setIsPreviewOpen(false); }} disabled={!canWrite} className="min-h-10 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50">Editar</button>}</div>
+          </footer>
+        </div>}
+      </Modal>
+
+      <Modal isOpen={isShareOpen} onClose={() => setIsShareOpen(false)} title="Revisar mensaje de WhatsApp" className="max-w-xl">
+        {sharingQuote && <div className="space-y-4">
+          <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800"><p className="font-bold text-slate-900 dark:text-white">{catalogConfig?.businessName || 'RivaTech'} · {sharingQuote.number}</p><p className="mt-1 text-slate-500">{sharingQuote.items.map(item => item.productName).join(', ')} · {formatCurrency(sharingQuote.total)}</p></div>
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Mensaje editable<textarea value={whatsAppMessage} onChange={event => setWhatsAppMessage(event.target.value)} rows={10} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setIsShareOpen(false)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-semibold dark:border-slate-700">Cancelar</button><button type="button" onClick={handleCopyLink} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold dark:border-slate-700">{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? 'Link copiado' : 'Copiar enlace'}</button><button type="button" onClick={handleShareByWhatsApp} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white"><MessageCircle size={16} /> Abrir WhatsApp</button></div>
+          {sharingQuote.clientEmail && <a href={'mailto:' + sharingQuote.clientEmail + '?subject=' + encodeURIComponent('Presupuesto ' + sharingQuote.number) + '&body=' + encodeURIComponent(whatsAppMessage)} className="block text-right text-xs font-semibold text-indigo-600 hover:underline">Preparar correo electrónico</a>}
+        </div>}
       </Modal>
 
       <Modal isOpen={Boolean(quoteToDelete)} onClose={() => setQuoteToDelete(null)} title="Eliminar presupuesto" className="max-w-md">
         {quoteToDelete && <div className="space-y-4">
           <p className="text-sm text-slate-600 dark:text-slate-300">¿Querés eliminar el presupuesto {quoteToDelete.number} de {quoteToDelete.clientName}?</p>
           {quoteToDelete.convertedToSaleId && <p className="text-sm text-amber-700 dark:text-amber-300">Este presupuesto ya se convirtió en una venta. También podés borrar esa venta.</p>}
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button type="button" onClick={() => setQuoteToDelete(null)} className="min-h-11 flex-1 rounded-xl border border-slate-200 px-4 font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">Cancelar</button>
-            <button type="button" onClick={() => handleMobileDelete(false)} className="min-h-11 flex-1 rounded-xl bg-rose-600 px-4 font-semibold text-white">Eliminar presupuesto</button>
-            {quoteToDelete.convertedToSaleId && <button type="button" onClick={() => handleMobileDelete(true)} className="min-h-11 flex-1 rounded-xl bg-rose-800 px-4 font-semibold text-white">Eliminar también la venta</button>}
-          </div>
+          <div className="flex flex-col gap-2 sm:flex-row"><button type="button" onClick={() => setQuoteToDelete(null)} className="min-h-11 flex-1 rounded-xl border border-slate-200 px-4 font-semibold">Cancelar</button><button type="button" onClick={() => handleMobileDelete(false)} className="min-h-11 flex-1 rounded-xl bg-rose-600 px-4 font-semibold text-white">Eliminar presupuesto</button>{quoteToDelete.convertedToSaleId && <button type="button" onClick={() => handleMobileDelete(true)} className="min-h-11 flex-1 rounded-xl bg-rose-800 px-4 font-semibold text-white">Eliminar también la venta</button>}</div>
         </div>}
       </Modal>
 

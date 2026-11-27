@@ -550,6 +550,8 @@ export interface QuoteItem {
   quantity: number;
   unitPrice: number;
   subtotal: number;
+  availability?: 'immediate' | 'on_order' | 'confirm';
+  leadTime?: string;
 }
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
@@ -558,7 +560,7 @@ export interface Quote {
   id: string;
   ownerUid: string;
   number: string;
-  clientId: string;
+  clientId: string | null;
   clientName: string;
   clientPhone?: string;
   clientEmail?: string;
@@ -571,6 +573,7 @@ export interface Quote {
   validDays: 7 | 15 | 30;
   expiresAt: string;
   notes: string;
+  internalNotes?: string;
   createdAt: string;
   updatedAt: string;
   convertedToSaleId?: string;

@@ -2,19 +2,20 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { fromDb, supabase } from '../lib/db';
 import { Quote } from '../types';
+import QuoteDocument from '../components/quotes/QuoteDocument';
 
 interface PublicOwner {
   businessName: string;
   phone?: string;
   email_contact?: string;
   currencySymbol?: string;
+  logoUrl?: string;
 }
 
 type PublicQuote = Pick<Quote,
   'id' | 'number' | 'clientName' | 'clientPhone' | 'clientEmail' | 'items'
   | 'subtotal' | 'discount' | 'shippingAmount' | 'total' | 'expiresAt' | 'notes' | 'createdAt'
 >;
-import { formatCurrency } from '../lib/utils';
 import { AlertTriangle, Clock, CheckCircle2, FileText } from 'lucide-react';
 
 export default function QuotePublic() {
@@ -46,6 +47,7 @@ export default function QuotePublic() {
             phone: row.business_phone ? String(row.business_phone) : undefined,
             email_contact: row.email_contact ? String(row.email_contact) : undefined,
             currencySymbol: row.currency_symbol ? String(row.currency_symbol) : undefined,
+            logoUrl: row.logo_url ? String(row.logo_url) : undefined,
           });
         }
       } catch {
@@ -97,140 +99,25 @@ export default function QuotePublic() {
   const isExpired = expiresAt < now;
   const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / 86400000);
   const isNearExpiry = !isExpired && daysLeft <= 3;
-
-  const createdDate = new Date(quote.createdAt).toLocaleDateString('es-AR');
   const expiresDate = expiresAt.toLocaleDateString('es-AR');
+  const businessName = owner?.businessName || 'RivaTech';
 
   return (
-    <div className="public-quote-page min-h-[100dvh] bg-slate-50">
-      {/* Expired banner */}
-      {isExpired && (
-        <div className="bg-rose-600 text-white text-center py-3 px-4 text-sm font-bold">
-          <AlertTriangle size={16} className="inline mr-2" />
-          Este presupuesto ha vencido el {expiresDate}
-        </div>
-      )}
-
-      <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 sm:py-10">
-        {/* Header */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-4">
-          <div className="bg-indigo-600 px-4 sm:px-8 py-5 sm:py-6 text-white">
-            <div className="flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-3">
-              <div>
-                <p className="text-indigo-200 text-sm font-medium">Presupuesto</p>
-                <h1 className="text-2xl font-black mt-0.5">{quote.number}</h1>
-              </div>
-              <div className="min-[380px]:text-right">
-                {owner && <p className="font-bold text-lg">{owner.businessName}</p>}
-                <p className="text-indigo-200 text-sm mt-0.5">Fecha: {createdDate}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Client + validity */}
-          <div className="px-4 sm:px-8 py-5 border-b border-slate-100">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-0.5">Para</p>
-                <p className="font-bold text-slate-900 text-lg">{quote.clientName}</p>
-                {quote.clientPhone && <p className="text-slate-500 text-sm">{quote.clientPhone}</p>}
-                {quote.clientEmail && <p className="text-slate-500 text-sm">{quote.clientEmail}</p>}
-              </div>
-              <div className="sm:text-right">
-                <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-0.5">Válido hasta</p>
-                <p className={`font-bold text-sm ${isExpired ? 'text-rose-600' : 'text-slate-900'}`}>{expiresDate}</p>
-                {isNearExpiry && (
-                  <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">
-                    <Clock size={12} />
-                    Vence en {daysLeft} día{daysLeft !== 1 ? 's' : ''}
-                  </div>
-                )}
-                {!isExpired && !isNearExpiry && (
-                  <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold">
-                    <CheckCircle2 size={12} />
-                    Vigente
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Items table */}
-          <div className="px-4 sm:px-8 py-4 overflow-x-auto overscroll-x-contain">
-            <table className="w-full min-w-[32rem] text-sm">
-              <thead>
-                <tr className="text-xs uppercase text-slate-400 font-semibold border-b border-slate-100">
-                  <th className="py-2 text-left">Descripción</th>
-                  <th className="py-2 text-center">Cant.</th>
-                  <th className="py-2 text-right">Precio U.</th>
-                  <th className="py-2 text-right">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {quote.items.map((item, idx) => (
-                  <tr key={idx}>
-                    <td className="py-3 font-medium text-slate-900">{item.productName}</td>
-                    <td className="py-3 text-center text-slate-600">{item.quantity}</td>
-                    <td className="py-3 text-right text-slate-600">{formatCurrency(item.unitPrice)}</td>
-                    <td className="py-3 text-right font-semibold text-slate-900">{formatCurrency(item.subtotal)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Totals */}
-          <div className="px-4 sm:px-8 py-5 bg-slate-50 border-t border-slate-100">
-            <div className="max-w-xs ml-auto space-y-1.5">
-              <div className="flex justify-between text-sm text-slate-500">
-                <span>Subtotal</span>
-                <span>{formatCurrency(quote.subtotal)}</span>
-              </div>
-              {quote.discount > 0 && (
-                <div className="flex justify-between text-sm text-emerald-600 font-medium">
-                  <span>Descuento ({quote.discount}%)</span>
-                  <span>-{formatCurrency(quote.subtotal * quote.discount / 100)}</span>
-                </div>
-              )}
-              {Number(quote.shippingAmount) > 0 && (
-                <div className="flex justify-between text-sm text-slate-600 font-medium">
-                  <span>Envío</span>
-                  <span>{formatCurrency(Number(quote.shippingAmount))}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-xl font-black text-slate-900 pt-2 border-t border-slate-200">
-                <span>Total</span>
-                <span className="text-indigo-600">{formatCurrency(quote.total)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Notes */}
-        {quote.notes && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-4 sm:px-8 py-5 mb-4">
-            <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-2">Observaciones</p>
-            <p className="text-slate-700 text-sm whitespace-pre-wrap">{quote.notes}</p>
-          </div>
-        )}
-
-        {/* Contact */}
-        {owner && (owner.phone || owner.email_contact) && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-4 sm:px-8 py-5 mb-4">
-            <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-3">Contacto</p>
-            <p className="font-bold text-slate-900 mb-1">{owner.businessName}</p>
-            {owner.phone && (
-              <a href={`tel:${owner.phone}`} className="block text-sm text-indigo-600 hover:underline">{owner.phone}</a>
-            )}
-            {owner.email_contact && (
-              <a href={`mailto:${owner.email_contact}`} className="block text-sm text-indigo-600 hover:underline">{owner.email_contact}</a>
-            )}
-          </div>
-        )}
-
-        {/* Footer */}
-        <p className="text-center text-xs text-slate-400 mt-6">Generado con RivaStock</p>
-      </div>
+    <div className="public-quote-page min-h-[100dvh] bg-slate-50 px-3 py-6 sm:px-4 sm:py-10">
+      {isExpired && <div className="mx-auto mb-4 max-w-3xl rounded-xl bg-rose-600 px-4 py-3 text-center text-sm font-bold text-white"><AlertTriangle size={16} className="mr-2 inline" />Este presupuesto venció el {expiresDate}</div>}
+      <main className="mx-auto max-w-3xl">
+        {isNearExpiry && <div className="mb-3 rounded-xl bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900"><Clock size={15} className="mr-2 inline" />Vence en {daysLeft} día{daysLeft !== 1 ? 's' : ''}</div>}
+        {!isExpired && !isNearExpiry && <div className="mb-3 rounded-xl bg-emerald-100 px-4 py-3 text-sm font-semibold text-emerald-900"><CheckCircle2 size={15} className="mr-2 inline" />Presupuesto vigente</div>}
+        <QuoteDocument quote={quote} businessName={businessName} currencySymbol={owner?.currencySymbol || '$'} logoUrl={owner?.logoUrl} />
+        {owner && (owner.phone || owner.email_contact) && <section className="mt-4 rounded-2xl border border-slate-200 bg-white px-5 py-5 sm:px-8">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">Contacto</h2>
+          <p className="mt-2 font-bold text-slate-900">{businessName}</p>
+          {owner.phone && <a href={'tel:' + owner.phone} className="mt-1 block text-sm text-indigo-600 hover:underline">{owner.phone}</a>}
+          {owner.email_contact && <a href={'mailto:' + owner.email_contact} className="mt-1 block text-sm text-indigo-600 hover:underline">{owner.email_contact}</a>}
+        </section>}
+        <p className="mt-6 text-center text-xs text-slate-400">Generado con RivaStock</p>
+      </main>
     </div>
   );
+
 }

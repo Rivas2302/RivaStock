@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, MessageCircle, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
+import { CheckCircle2, Clock, Edit2, Eye, MessageCircle, Plus, RefreshCw, Search, ShoppingCart, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import type { Quote, QuoteStatus } from '../../types';
 
@@ -22,13 +22,15 @@ interface MobileQuotesProps {
   onStatusFilter: (value: 'all' | QuoteStatus) => void;
   onNew: () => void;
   onEdit: (quote: Quote) => void;
+  onPreview: (quote: Quote) => void;
   onShare: (quote: Quote) => void;
+  onRenew: (quote: Quote) => void;
   onConvert: (quote: Quote) => void;
   onDelete: (quote: Quote) => void;
   effectiveStatus: (quote: Quote) => QuoteStatus;
 }
 
-export default function MobileQuotes({ quotes, filteredQuotes, statusFilter, search, canWrite, canDelete, onSearch, onStatusFilter, onNew, onEdit, onShare, onConvert, onDelete, effectiveStatus }: MobileQuotesProps) {
+export default function MobileQuotes({ quotes, filteredQuotes, statusFilter, search, canWrite, canDelete, onSearch, onStatusFilter, onNew, onEdit, onPreview, onShare, onRenew, onConvert, onDelete, effectiveStatus }: MobileQuotesProps) {
   const [visibleCount, setVisibleCount] = useState(20);
   useEffect(() => setVisibleCount(20), [search, statusFilter]);
   const summary = useMemo(() => ({
@@ -59,16 +61,19 @@ export default function MobileQuotes({ quotes, filteredQuotes, statusFilter, sea
         const daysLeft = Math.ceil((new Date(quote.expiresAt).getTime() - Date.now()) / 86400000);
         const expires = new Date(quote.expiresAt).toLocaleDateString('es-AR');
         return <article key={quote.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-          <button type="button" onClick={() => onEdit(quote)} disabled={!canWrite} className="flex min-h-11 w-full items-start gap-2 text-left disabled:cursor-default">
+          <button type="button" onClick={() => onPreview(quote)} className="flex min-h-11 w-full items-start gap-2 text-left">
             <span className="mt-0.5 shrink-0 text-indigo-600 dark:text-indigo-300"><CheckCircle2 size={18} /></span>
             <span className="min-w-0 flex-1"><span className="block font-bold">{quote.number}</span><span className="mt-0.5 block truncate text-sm text-slate-600 dark:text-slate-300">{quote.clientName}</span></span>
             <span className="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold" data-status={status}>{statusLabel(status)}</span>
           </button>
           <div className="flex items-end justify-between gap-2"><span className="text-xs text-slate-500 dark:text-slate-400">{quote.items.length} {quote.items.length === 1 ? 'producto' : 'productos'} · Vence {expires}{daysLeft >= 0 && daysLeft <= 3 && status !== 'accepted' && <span className="ml-1 inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300"><Clock size={12} /> {daysLeft}d</span>}</span><strong className="shrink-0 text-lg">{formatCurrency(quote.total)}</strong></div>
-          <div className={`grid ${status === 'accepted' && !quote.convertedToSaleId ? 'grid-cols-3' : 'grid-cols-2'} gap-2 border-t border-slate-100 pt-3 dark:border-slate-800`}>
-            <button type="button" disabled={!canWrite} onClick={() => onShare(quote)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><MessageCircle size={17} /> Compartir</button>
-            {status === 'accepted' && !quote.convertedToSaleId && <button type="button" disabled={!canWrite} onClick={() => onConvert(quote)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-semibold text-white disabled:opacity-50"><ShoppingCart size={17} /> Pasar a venta</button>}
-            <button type="button" disabled={!canDelete} onClick={() => onDelete(quote)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 text-sm font-semibold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300"><Trash2 size={17} /> Eliminar</button>
+          <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+            <button type="button" onClick={() => onPreview(quote)} className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 text-xs font-semibold dark:border-slate-700"><Eye size={15} /> Vista previa</button>
+            <button type="button" disabled={!canWrite} onClick={() => onShare(quote)} className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 text-xs font-semibold disabled:opacity-50 dark:border-slate-700"><MessageCircle size={15} /> Compartir</button>
+            <button type="button" disabled={!canWrite} onClick={() => onEdit(quote)} className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 text-xs font-semibold disabled:opacity-50 dark:border-slate-700"><Edit2 size={15} /> Editar</button>
+            {!['accepted', 'rejected'].includes(status) && <button type="button" disabled={!canWrite} onClick={() => onRenew(quote)} className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-amber-200 text-xs font-semibold text-amber-700 disabled:opacity-50 dark:border-amber-900 dark:text-amber-300"><RefreshCw size={15} /> Renovar</button>}
+            {status === 'accepted' && !quote.convertedToSaleId && <button type="button" disabled={!canWrite} onClick={() => onConvert(quote)} className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 text-xs font-semibold text-white disabled:opacity-50"><ShoppingCart size={15} /> Pasar a venta</button>}
+            <button type="button" disabled={!canDelete} onClick={() => onDelete(quote)} className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-rose-200 text-xs font-semibold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300"><Trash2 size={15} /> Eliminar</button>
           </div>
         </article>;
       })}
