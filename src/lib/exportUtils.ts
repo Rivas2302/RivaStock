@@ -88,6 +88,77 @@ export async function exportToExcel<T>(
   XLSX.writeFile(wb, fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`);
 }
 
+export interface WorkbookSheet {
+  name: string;
+  rows: Array<Array<string | number | Date | null>>;
+  widths?: number[];
+  headerRows?: number;
+  moneyColumns?: number[];
+  moneyCells?: Array<[number, number]>;
+  dateColumns?: number[];
+}
+
+export async function exportWorkbookToExcel(
+  sheets: WorkbookSheet[],
+  fileName: string,
+  currencySymbol: string,
+): Promise<void> {
+  const XLSX = await import('xlsx');
+  const workbook = XLSX.utils.book_new();
+  const currencyFormat = `"${currencySymbol.replace(/"/g, '""')}" #,##0.00`;
+  for (const sheet of sheets) {
+    const worksheet = XLSX.utils.aoa_to_sheet(sheet.rows, { cellDates: true });
+    const headerRows = sheet.headerRows ?? 1;
+    const maxColumns = Math.max(0, ...sheet.rows.map(row => row.length));
+    worksheet['!cols'] = Array.from({ length: maxColumns }, (_, index) => ({ wch: sheet.widths?.[index] ?? 18 }));
+    if (headerRows > 0 && sheet.rows.length > headerRows) {
+      worksheet['!autofilter'] = { ref: `A${headerRows}:${XLSX.utils.encode_col(maxColumns - 1)}${sheet.rows.length}` };
+      worksheet['!freeze'] = { xSplit: 0, ySplit: headerRows, topLeftCell: `A${headerRows + 1}`, activePane: 'bottomLeft', state: 'frozen' };
+    }
+    for (let rowIndex = 0; rowIndex < sheet.rows.length; rowIndex++) {
+      for (const columnIndex of sheet.moneyColumns ?? []) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+        if (cell && typeof cell.v === 'number') cell.z = currencyFormat;
+      }
+      for (const [moneyRow, columnIndex] of sheet.moneyCells ?? []) {
+        if (moneyRow !== rowIndex) continue;
+        const cell = worksheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+        if (cell && typeof cell.v === 'number') cell.z = currencyFormat;
+      }
+      for (const columnIndex of sheet.dateColumns ?? []) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+        if (cell && sheet.rows[rowIndex]?.[columnIndex] instanceof Date) cell.z = 'dd/mm/yyyy';
+      }
+    }
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31));
+  }
+  const { strFromU8, strToU8, unzipSync, zipSync } = await import('fflate');
+  const archive = unzipSync(new Uint8Array(XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })));
+  for (const [index, sheet] of sheets.entries()) {
+    const headerRows = sheet.headerRows ?? 1;
+    if (headerRows <= 0) continue;
+    const path = `xl/worksheets/sheet${index + 1}.xml`;
+    const sheetBytes = archive[path];
+    if (!sheetBytes) continue;
+    const xml = strFromU8(sheetBytes);
+    const frozenView = `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${headerRows}" topLeftCell="A${headerRows + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
+    const updatedXml = /<sheetViews>[\s\S]*?<\/sheetViews>/.test(xml)
+      ? xml.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/, frozenView)
+      : xml.replace(/(<dimension[^>]*\/>)/, `$1${frozenView}`);
+    archive[path] = strToU8(updatedXml);
+  }
+  const output = zipSync(archive);
+  const blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 // ─── PDF ────────────────────────────────────────────────────────────────────
 
 export interface PdfReportContext {
@@ -150,6 +221,9 @@ export interface ExportToPdfOptions {
   /** Map row → cell values (one entry per column dataKey). */
   rows: Array<Record<string, string | number>>;
   fileName: string;
+  summaryOnly?: boolean;
+  filtersLabel?: string;
+  summaryRows?: Array<[string, string]>;
 }
 
 /**
@@ -250,8 +324,40 @@ export async function exportToPDF(
     cursorY += 22;
   }
 
+  if (options.filtersLabel) {
+    const filterText = doc.splitTextToSize(`Filtros: ${options.filtersLabel}`, pageWidth - margin * 2);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(filterText, margin, cursorY + 2);
+    cursorY += filterText.length * 4 + 4;
+  }
+
+  if (options.summaryRows?.length) {
+    const columns = 2;
+    const cellWidth = (pageWidth - margin * 2) / columns;
+    options.summaryRows.forEach(([label, value], index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const x = margin + column * cellWidth;
+      const y = cursorY + row * 15;
+      doc.setDrawColor(226, 232, 240);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x + 1, y, cellWidth - 2, 12, 1.5, 1.5, 'FD');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(label.toUpperCase(), x + 4, y + 4);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text(doc.splitTextToSize(value, cellWidth - 8), x + 4, y + 9);
+    });
+    cursorY += Math.ceil(options.summaryRows.length / columns) * 15 + 4;
+  }
+
   // Main table
-  autoTable(doc, {
+  if (!options.summaryOnly) autoTable(doc, {
     startY: cursorY,
     head: [options.columns.map(c => c.header)],
     body: options.rows.map(r => options.columns.map(c => r[c.dataKey] ?? '')),
@@ -290,6 +396,15 @@ export async function exportToPDF(
     },
     margin: { left: margin, right: margin, top: cursorY },
   });
+
+  if (options.summaryOnly) {
+    const pageH = doc.internal.pageSize.getHeight();
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Generado el ${new Date().toLocaleString('es-AR')}`, margin, pageH - 6);
+    const pageStr = 'Página 1';
+    doc.text(pageStr, pageWidth - margin - doc.getTextWidth(pageStr), pageH - 6);
+  }
 
   doc.save(options.fileName.endsWith('.pdf') ? options.fileName : `${options.fileName}.pdf`);
 }

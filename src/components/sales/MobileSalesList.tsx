@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, FileDown, FileSpreadsheet, MoreHorizontal, Plus, ScanLine, Search, Trash2, Edit2 } from 'lucide-react';
+import { ChevronDown, CreditCard, FileDown, FileSpreadsheet, MoreHorizontal, Plus, ScanLine, Search, Trash2, Edit2 } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 import type { OwnerSaleProjection } from '../../lib/attributedSales';
 import type { InventoryOwner, Product } from '../../types';
 import ProductThumbnail from '../stock/ProductThumbnail';
 
-interface MonthOption { value: string; label: string }
+type SalesPeriodPreset = 'today' | 'week' | 'month' | 'custom' | 'all';
 
 interface MobileSalesListProps {
   sales: OwnerSaleProjection[];
@@ -21,6 +21,8 @@ interface MobileSalesListProps {
   onCreate: () => void;
   onOpenPos: () => void;
   onEdit: (sale: OwnerSaleProjection) => void;
+  onCorrectPayment: (sale: OwnerSaleProjection) => void;
+  canCorrectPayment: (sale: OwnerSaleProjection) => boolean;
   onDelete: (sale: OwnerSaleProjection, confirmed?: boolean) => void;
   onToggleStatus: (sale: OwnerSaleProjection) => void;
   search: string;
@@ -29,15 +31,28 @@ interface MobileSalesListProps {
   onStatusFilterChange: (value: string) => void;
   ownerFilter: string;
   onOwnerFilterChange: (value: string) => void;
-  monthOptions: MonthOption[];
-  selectedMonth: string;
-  onSelectedMonthChange: (value: string) => void;
+  periodPreset: SalesPeriodPreset;
+  onPeriodPresetChange: (value: SalesPeriodPreset) => void;
+  customFrom: string;
+  customTo: string;
+  onCustomFromChange: (value: string) => void;
+  onCustomToChange: (value: string) => void;
+  periodLabel: string;
+  zeroOnly: boolean;
+  onZeroOnlyChange: (value: boolean) => void;
   totalSold: number;
   totalCollected: number;
   totalPending: number;
+  ticketCount: number;
+  unitCount: number;
+  grossProfit: number;
+  costAvailableCount: number;
+  costMissingCount: number;
+  onOpenInsight: (insight: 'sold' | 'profit' | 'pending') => void;
+  onOpenCollections: () => void;
   formatAmount: (amount: number) => string;
   onExportExcel: () => void;
-  onExportPdf: () => void;
+  onExportPdf: (mode?: 'summary' | 'detail') => void;
   exporting: boolean;
   loading: boolean;
   error: string | null;
@@ -54,10 +69,14 @@ function dayLabel(value: string): string {
 
 export default function MobileSalesList({
   sales, products, inventoryOwners, holdingsEnabled, canCreate, canWrite, canDelete,
-  saving, statusSavingSaleId, canMutateSale, onCreate, onOpenPos, onEdit, onDelete,
+  saving, statusSavingSaleId, canMutateSale, onCreate, onOpenPos, onEdit, onCorrectPayment, canCorrectPayment, onDelete,
   onToggleStatus, search, onSearchChange, statusFilter, onStatusFilterChange,
-  ownerFilter, onOwnerFilterChange, monthOptions, selectedMonth, onSelectedMonthChange,
-  totalSold, totalCollected, totalPending, onExportExcel, onExportPdf, exporting,
+  ownerFilter, onOwnerFilterChange, periodPreset, onPeriodPresetChange,
+  customFrom, customTo, onCustomFromChange, onCustomToChange, periodLabel,
+  zeroOnly, onZeroOnlyChange,
+  totalSold, totalCollected, totalPending, ticketCount, unitCount, grossProfit,
+  costAvailableCount, costMissingCount, onOpenInsight, onOpenCollections,
+  onExportExcel, onExportPdf, exporting,
   formatAmount,
   loading, error,
 }: MobileSalesListProps) {
@@ -93,7 +112,8 @@ export default function MobileSalesList({
           </button>
           {exportMenuOpen && <div className="absolute right-0 top-full z-20 mt-2 w-60 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-1 shadow-lg">
             <button type="button" disabled={exporting} onClick={() => { setExportMenuOpen(false); onExportExcel(); }} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] disabled:opacity-50"><FileSpreadsheet size={17} /> Exportar Excel (.xlsx)</button>
-            <button type="button" disabled={exporting} onClick={() => { setExportMenuOpen(false); onExportPdf(); }} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] disabled:opacity-50"><FileDown size={17} /> Exportar PDF</button>
+            <button type="button" disabled={exporting} onClick={() => { setExportMenuOpen(false); onExportPdf('summary'); }} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] disabled:opacity-50"><FileDown size={17} /> Resumen PDF (1 página)</button>
+            <button type="button" disabled={exporting} onClick={() => { setExportMenuOpen(false); onExportPdf('detail'); }} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] disabled:opacity-50"><FileDown size={17} /> Detalle de ventas PDF</button>
           </div>}
         </div>
       </header>
@@ -105,23 +125,39 @@ export default function MobileSalesList({
           className="flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[var(--line-strong)] bg-[var(--surface)] px-2 text-sm font-semibold text-[var(--ink)] disabled:opacity-50"><ScanLine size={19} /> Modo POS</button>
       </div>
 
-      <section aria-label="Resumen del mes" className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-[var(--ink-muted)]">Vendido este mes</h2>
-          <label className="relative">
-            <span className="sr-only">Mes del resumen</span>
-            <select aria-label="Mes del resumen" value={selectedMonth} onChange={event => onSelectedMonthChange(event.target.value)}
-              className="min-h-11 max-w-40 appearance-none rounded-full border border-[var(--line)] bg-[var(--surface-muted)] py-2 pl-3 pr-9 text-sm font-semibold capitalize text-[var(--ink)]">
-              {monthOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      <section aria-label="Resumen del período" className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h2 className="text-sm font-semibold text-[var(--ink)]">Resumen de ventas</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">{periodLabel}</p></div>
+          <label>
+            <span className="sr-only">Período de ventas</span>
+            <select aria-label="Período de ventas" value={periodPreset} onChange={event => onPeriodPresetChange(event.target.value as SalesPeriodPreset)}
+              className="min-h-11 max-w-48 rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 text-sm font-semibold text-[var(--ink)]">
+              <option value="today">Hoy</option><option value="week">Esta semana</option><option value="month">Este mes</option><option value="custom">Personalizado</option><option value="all">Todo el historial</option>
             </select>
-            <ChevronDown aria-hidden="true" size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--ink-muted)]" />
           </label>
         </div>
-        <p className="text-3xl font-bold tracking-tight text-[var(--ink)]">{formatAmount(totalSold)}</p>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-xl bg-[var(--surface-muted)] p-3"><p className="text-xs text-[var(--ink-muted)]">Cobrado</p><p className="mt-1 font-bold text-[var(--success-ink)]">{formatAmount(totalCollected)}</p></div>
-          <div className="rounded-xl bg-[var(--surface-muted)] p-3"><p className="text-xs text-[var(--ink-muted)]">Por cobrar</p><p className="mt-1 font-bold text-[var(--warning-ink)]">{formatAmount(totalPending)}</p></div>
+        {periodPreset === 'custom' && <div className="grid grid-cols-2 gap-2">
+          <label className="text-xs text-[var(--ink-muted)]">Desde<input aria-label="Desde" type="date" value={customFrom} onChange={event => onCustomFromChange(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] px-2 text-sm text-[var(--ink)]" /></label>
+          <label className="text-xs text-[var(--ink-muted)]">Hasta<input aria-label="Hasta" type="date" value={customTo} onChange={event => onCustomToChange(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] px-2 text-sm text-[var(--ink)]" /></label>
+        </div>}
+        <div className="grid grid-cols-1 gap-2">
+          <button type="button" onClick={() => onOpenInsight('sold')} className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] p-3 text-left">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Vendido en el período</span>
+            <span className="mt-1 block text-2xl font-bold text-[var(--ink)]">{formatAmount(totalSold)}</span>
+            <span className="mt-1 block text-xs text-[var(--ink-muted)]">{ticketCount} tickets · {unitCount} unidades · Cobrado {formatAmount(totalCollected)}</span>
+          </button>
+          <button type="button" onClick={() => onOpenInsight('profit')} className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] p-3 text-left">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Ganancia bruta</span>
+            <span className="mt-1 block text-2xl font-bold text-[var(--success-ink)]">{costAvailableCount ? formatAmount(grossProfit) : 'Sin datos'}</span>
+            <span className="mt-1 block text-xs text-[var(--ink-muted)]">Costo histórico en {costAvailableCount} de {ticketCount} ventas{costMissingCount ? ' · ' + costMissingCount + ' incompletas' : ''}; envío separado</span>
+          </button>
+          <button type="button" onClick={() => onOpenInsight('pending')} className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] p-3 text-left">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Por cobrar</span>
+            <span className="mt-1 block text-2xl font-bold text-[var(--warning-ink)]">{formatAmount(totalPending)}</span>
+            <span className="mt-1 block text-xs text-[var(--ink-muted)]">Tocar para ver clientes, antigüedad y cobros</span>
+          </button>
         </div>
+        <button type="button" onClick={onOpenCollections} className="min-h-11 w-full rounded-xl border border-[var(--line)] px-3 text-sm font-semibold text-[var(--brand)]">Cobros por fecha de pago</button>
       </section>
 
       <label className="relative block">
@@ -139,6 +175,10 @@ export default function MobileSalesList({
           className={`min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold ${statusFilter === value ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--ink)]' : 'border-[var(--line)] bg-[var(--surface)] text-[var(--ink-muted)]'}`}>
           {label}{value === 'Pendiente' ? ` · ${sales.filter(sale => sale.status !== 'Pagado').length}` : ''}
         </button>)}
+        <button type="button" aria-pressed={zeroOnly} onClick={() => onZeroOnlyChange(!zeroOnly)}
+          className={'min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold ' + (zeroOnly ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--ink)]' : 'border-[var(--line)] bg-[var(--surface)] text-[var(--ink-muted)]')}>
+          Ventas en $0
+        </button>
       </section>
 
       {holdingsEnabled && <section aria-label="Filtrar por titular" className="-mr-2 flex gap-2 overflow-x-auto pb-1">
@@ -171,6 +211,8 @@ export default function MobileSalesList({
                   {product ? <ProductThumbnail product={product} sizeClassName="size-12" /> : <span role="img" aria-label={`Sin imagen para ${sale.productName}`} className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-muted)] text-[var(--ink-muted)]"><span aria-hidden="true">▧</span></span>}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-[var(--ink)]">{sale.productName}</span>
+                    {sale.isPartial && <span className="mt-1 inline-flex rounded-full bg-[var(--warning-surface)] px-2 py-0.5 text-[10px] font-semibold text-[var(--warning-ink)]">Vista parcial</span>}
+                    <span className="mt-0.5 block font-mono text-[10px] text-[var(--ink-muted)]">Ticket {sale.id.slice(0, 8).toUpperCase()}</span>
                     <span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">{sale.quantity} u. · {sale.paymentMethod || 'Sin método'}{sale.client ? ` · ${sale.client}` : ''}</span>
                     {sale.items.length > 1 && <span className="mt-1 inline-flex rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--ink-subtle)]">Ticket de {sale.items.length}</span>}
                   </span>
@@ -182,7 +224,7 @@ export default function MobileSalesList({
                 {expanded && <div className="space-y-3 border-t border-[var(--line)] bg-[var(--surface-muted)] p-4" data-testid="mobile-sale-detail">
                   <button type="button" onClick={() => setExpandedSaleId(null)} className="min-h-11 text-sm font-semibold text-[var(--brand)]">← Volver a las ventas</button>
                   <dl className="grid grid-cols-2 gap-3 text-sm">
-                    <div><dt className="text-xs text-[var(--ink-muted)]">Fecha</dt><dd className="mt-1 font-medium text-[var(--ink)]">{formatDate(sale.date)}</dd></div>
+                    <div><dt className="text-xs text-[var(--ink-muted)]">Ticket y fecha</dt><dd className="mt-1 font-mono font-medium text-[var(--ink)]">{sale.id.slice(0, 8).toUpperCase()} · {formatDate(sale.date)}</dd></div>
                     <div><dt className="text-xs text-[var(--ink-muted)]">Cantidad</dt><dd className="mt-1 font-medium text-[var(--ink)]">{sale.quantity} unidades</dd></div>
                     <div><dt className="text-xs text-[var(--ink-muted)]">Cliente</dt><dd className="mt-1 font-medium text-[var(--ink)]">{sale.client || 'Sin cliente'}</dd></div>
                     <div><dt className="text-xs text-[var(--ink-muted)]">Método de pago</dt><dd className="mt-1 font-medium text-[var(--ink)]">{sale.paymentMethod || 'Sin método'}</dd></div>
@@ -194,6 +236,8 @@ export default function MobileSalesList({
                   <div className="grid grid-cols-2 gap-2">
                     {canMutateSale(sale) && <button type="button" onClick={() => onToggleStatus(sale)} disabled={!canWrite || statusSavingSaleId === sale.id}
                       className="min-h-11 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">{sale.status === 'Pagado' ? 'Marcar pendiente' : 'Marcar pagada'}</button>}
+                    {canMutateSale(sale) && canCorrectPayment(sale) && <button type="button" onClick={() => onCorrectPayment(sale)} disabled={!canWrite}
+                      className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50"><CreditCard size={16} /> Corregir pago</button>}
                     {canMutateSale(sale) && <button type="button" onClick={() => onEdit(sale)} disabled={!canWrite}
                       className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50"><Edit2 size={16} /> Editar</button>}
                     {canMutateSale(sale) && <button type="button" onClick={() => setDeleteTarget(sale)} disabled={!canDelete}

@@ -379,7 +379,8 @@ export function projectAttributedSales(
       });
     }
     const items = [...itemsById.values()];
-    const total = roundMoney(items.reduce((sum, item) => sum + item.revenue, 0));
+    const productTotal = roundMoney(items.reduce((sum, item) => sum + item.revenue, 0));
+    const totalWithShipping = roundMoney(productTotal + Number(sale.shippingAmount ?? 0));
     const expectedLineCount = sale.items?.length ?? 1;
     const snapshotLineIds = snapshotIdsBySale.get(sale.id) ?? new Set<string>();
     const hasAllLines = snapshotLineIds.size === expectedLineCount
@@ -387,7 +388,7 @@ export function projectAttributedSales(
       && items.every((item) => snapshotLineIds.has(item.saleItemId));
     const isComplete = ownerFilter === 'all'
       && hasAllLines
-      && Math.abs(total - sale.total) < 0.005;
+      && Math.abs(totalWithShipping - sale.total) < 0.005;
     const ownerNames = [...new Set(visibleAllocations.map(
       (allocation) => allocation.inventoryOwnerNameSnapshot || 'Titular',
     ))];
@@ -400,7 +401,7 @@ export function projectAttributedSales(
       quantity: roundMoney(items.reduce((sum, item) => sum + item.quantity, 0)),
       unitPrice: items.length === 1 ? items[0].unitPrice : null,
       adjustment: roundMoney(items.reduce((sum, item) => sum + item.adjustment, 0)),
-      total,
+      total: isComplete ? totalWithShipping : productTotal,
       costTotal: roundMoney(items.reduce((sum, item) => sum + item.cost, 0)),
       status: sale.status,
       paymentMethod: sale.paymentMethod,

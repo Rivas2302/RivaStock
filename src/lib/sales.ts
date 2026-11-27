@@ -38,12 +38,6 @@ export function getSalesPageEditPlan(
   }
 
   if (isPosSale(sale)) {
-    if (Array.isArray(sale.items) && sale.items.length > 1) {
-      return {
-        allowed: false,
-        reason: 'Esta venta POS tiene varios productos. Para conservar sus lineas y stock, elimina la venta y volve a registrarla desde el POS.',
-      };
-    }
     return { allowed: true, rpc: 'edit_pos_sale' };
   }
 

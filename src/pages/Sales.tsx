@@ -23,6 +23,7 @@ import {
   Trash2,
   Download,
   CheckCircle2,
+  CreditCard,
   Clock,
   ChevronDown,
   ShoppingCart,
@@ -36,6 +37,7 @@ import Modal from '../components/Modal';
 import NumberField from '../components/NumberField';
 import MoneyInput from '../components/MoneyInput';
 import ProductSearchSelect from '../components/ProductSearchSelect';
+import ProductThumbnail from '../components/stock/ProductThumbnail';
 import AdjustmentInput from '../components/AdjustmentInput';
 import { motion } from 'motion/react';
 import {
@@ -43,7 +45,7 @@ import {
   isPendingSaleStatus,
   isQuoteSale,
 } from '../lib/sales';
-import { exportToExcel, exportToPDF } from '../lib/exportUtils';
+import { exportWorkbookToExcel, exportToPDF } from '../lib/exportUtils';
 import { showToast } from '../lib/toast';
 import { calculateTotalWithShipping } from '../lib/saleShipping';
 import {
@@ -66,7 +68,47 @@ const SALE_COLUMNS = 'id,user_id,date,created_at,product_id,product_name,unit_pr
 const CUSTOMER_COLUMNS = 'id,user_id,name,name_lower,phone,email,notes,current_balance,created_at,updated_at';
 const CUSTOMER_TRANSACTION_COLUMNS = 'id,user_id,customer_id,type,amount,description,payment_method,related_sale_id,related_quote_id,account_payment,financial_command_id,date,created_at';
 const SALE_ITEM_PROJECTION_COLUMNS = 'id,sale_id_snapshot,reversed_at';
-const SALE_ALLOCATION_PROJECTION_COLUMNS = 'id,sale_id_snapshot,sale_item_id,inventory_owner_id_snapshot,inventory_owner_name_snapshot,product_id_snapshot,product_name_snapshot,quantity,unit_price,discount_share,adjustment_share,revenue_share,cost_share,reversed_at';
+const SALE_ALLOCATION_PROJECTION_COLUMNS = 'id,sale_id_snapshot,sale_item_id,inventory_owner_id_snapshot,inventory_owner_name_snapshot,product_id_snapshot,product_name_snapshot,quantity,unit_price,discount_share,adjustment_share,revenue_share,cost_share,allocation_source,reversed_at';
+
+type SalesPeriodPreset = 'today' | 'week' | 'month' | 'custom' | 'all';
+type SalesInsight = 'sold' | 'profit' | 'pending';
+
+function localDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getSalesDateRange(preset: SalesPeriodPreset, customFrom: string, customTo: string) {
+  const today = todayString();
+  const now = new Date();
+  if (preset === 'today') return { from: today, to: today };
+  if (preset === 'week') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    return { from: localDateKey(start), to: today };
+  }
+  if (preset === 'month') return { from: `${today.slice(0, 7)}-01`, to: today };
+  if (preset === 'custom') {
+    const from = customFrom || customTo || today;
+    const to = customTo || customFrom || today;
+    return from <= to ? { from, to } : { from: to, to: from };
+  }
+  return { from: '', to: '' };
+}
+
+function formatSalesRange(range: { from: string; to: string }, preset: SalesPeriodPreset) {
+  if (preset === 'all') return 'Todo el historial';
+  if (preset === 'today') return `Hoy · ${formatDate(range.from)}`;
+  if (preset === 'week') return `Esta semana · ${formatDate(range.from)} al ${formatDate(range.to)}`;
+  if (preset === 'month') return `Este mes · ${formatDate(range.from)} al ${formatDate(range.to)}`;
+  return `${formatDate(range.from)} al ${formatDate(range.to)}`;
+}
+
+function getSaleTicketLabel(saleId: string) {
+  return saleId.slice(0, 8).toUpperCase();
+}
 
 export default function Sales() {
   const isMobile = useIsMobile();
@@ -111,6 +153,7 @@ export default function Sales() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [paymentCorrectionOnly, setPaymentCorrectionOnly] = useState(false);
   const [formData, setFormData] = useState<Partial<Sale>>({
     date: todayString(),
     productId: '',
@@ -129,6 +172,7 @@ export default function Sales() {
 
   const openNewSale = () => {
     setEditingSale(null);
+    setPaymentCorrectionOnly(false);
     setFormData({ date: todayString(), productId: '', quantity: 1, unitPrice: 0, adjustment: 0, shippingAmount: 0, status: 'Pagado', paymentMethod: 'Efectivo', client: '' });
     setShippingEnabled(false);
     setIsCreditSale(false);
@@ -156,7 +200,15 @@ export default function Sales() {
   const refundIntentRef = useRef<IdempotencyIntent | null>(null);
   const statusIntentRef = useRef<IdempotencyIntent | null>(null);
   const [statusSavingSaleId, setStatusSavingSaleId] = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState(() => todayString().slice(0, 7));
+  const [periodPreset, setPeriodPreset] = useState<SalesPeriodPreset>('month');
+  const [customFrom, setCustomFrom] = useState(() => `${todayString().slice(0, 7)}-01`);
+  const [customTo, setCustomTo] = useState(todayString());
+  const [zeroOnly, setZeroOnly] = useState(false);
+  const [activeInsight, setActiveInsight] = useState<SalesInsight | null>(null);
+  const [showCollectionsModal, setShowCollectionsModal] = useState(false);
+  const [editingLineIndex, setEditingLineIndex] = useState<number | null>(null);
+  const [collectionsFrom, setCollectionsFrom] = useState(todayString());
+  const [collectionsTo, setCollectionsTo] = useState(todayString());
   const renderCreationActions = shouldRenderSalesMutationActions(
     holdingsEnabled,
     operableInventoryOwnerIds.length > 0,
@@ -173,31 +225,89 @@ export default function Sales() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showExportMenu]);
 
+  const excelDate = (value: string) => {
+    const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+    return new Date(year, month - 1, day, 12);
+  };
+
+  const paymentForSale = (sale: OwnerSaleProjection) => {
+    const settlement = settlements.get(sale.id);
+    const original = salesById.get(sale.id);
+    const fullTotal = settlement?.total ?? original?.total ?? sale.total;
+    const fraction = fullTotal > 0 ? sale.total / fullTotal : 0;
+    return {
+      collected: roundPrice((settlement?.paid ?? 0) * fraction),
+      pending: roundPrice((settlement?.pending ?? 0) * fraction),
+    };
+  };
+
   const handleExportExcel = async () => {
     if (!user || exporting) return;
     setExporting(true);
     try {
-      const generatedAt = new Date().toISOString().slice(0, 10);
-      await exportToExcel(filteredSales, [
-        { header: 'Fecha', value: sale => formatDate(sale.date), width: 14 },
-        { header: 'Producto', value: sale => sale.productName, width: 30 },
-        { header: 'Cliente', value: sale => sale.client || '-', width: 24 },
-        { header: 'Cantidad', value: sale => sale.quantity, width: 10 },
-        { header: 'Precio Unitario', value: sale => sale.unitPrice === null ? '-' : roundPrice(sale.unitPrice), width: 16 },
-        { header: 'Ajuste', value: sale => sale.adjustment ?? 0, width: 12 },
-        { header: 'Total', value: sale => roundPrice(sale.total), width: 16 },
-        { header: 'Método de Pago', value: sale => sale.paymentMethod || '-', width: 18 },
-        { header: 'Estado', value: sale => sale.status, width: 14 },
-        { header: 'Vista', value: sale => sale.viewLabel, width: 16 },
-      ], `ventas-${generatedAt}.xlsx`, 'Ventas', {
-        currencySymbol: user.currencySymbol,
-        summary: [
-          { label: 'Negocio', value: user.businessName },
-          { label: 'Filtro de estado', value: statusFilter === 'all' ? 'Todos' : statusFilter },
-          { label: 'Búsqueda', value: search.trim() || 'Sin filtro' },
-          { label: 'Ventas exportadas', value: String(filteredSales.length) },
-        ],
+      const generatedAt = todayString();
+      const saleRows = filteredSales.map(sale => {
+        const payment = paymentForSale(sale);
+        const ownerNames = sale.ownerNames.join(', ') || 'Principal';
+        return [
+          getSaleTicketLabel(sale.id), excelDate(sale.date), sale.client || 'Sin cliente',
+          ownerNames, roundPrice(sale.total), payment.collected, payment.pending,
+          sale.status, sale.paymentMethod || 'Sin método',
+        ];
       });
+      const productRows = filteredSales.flatMap(sale => {
+        const originalProjection = projectedSales.find(candidate => candidate.id === sale.id) ?? sale;
+        const baseSubtotal = originalProjection.items.reduce(
+          (sum, item) => sum + item.quantity * item.unitPrice - item.discount, 0,
+        );
+        return sale.items.map(item => {
+          const lineSubtotal = item.quantity * item.unitPrice - item.discount;
+          const adjustmentShare = holdingsEnabled
+            ? item.adjustment
+            : baseSubtotal !== 0 ? (sales.find(candidate => candidate.id === sale.id)?.adjustment ?? 0) * lineSubtotal / baseSubtotal : 0;
+          const subtotal = holdingsEnabled ? item.revenue : lineSubtotal + adjustmentShare;
+          return [
+            getSaleTicketLabel(sale.id), excelDate(sale.date), item.productName,
+            item.quantity, roundPrice(item.unitPrice), roundPrice(item.discount + adjustmentShare), roundPrice(subtotal),
+          ];
+        });
+      });
+      const summaryRows: Array<Array<string | number | Date | null>> = [
+        ['Indicador', 'Valor'],
+        ['Negocio', user.businessName],
+        ['Período', reportPeriodLabel],
+        ['Filtros', filterLabel],
+        ['Vendido', roundPrice(totalSold)],
+        ['Cobrado de estas ventas', roundPrice(totalCollected)],
+        ['Pendiente de cobro', roundPrice(totalPending)],
+        ['Ganancia bruta con costo histórico', costAvailableCount ? roundPrice(grossProfit) : 'Sin datos de costo'],
+        ['Tickets', ticketCount],
+        ['Unidades', unitCount],
+        ['Ventas con costo histórico disponible', costAvailableCount + ' de ' + ticketCount],
+      ];
+      await exportWorkbookToExcel([
+        { name: 'Resumen', rows: summaryRows, widths: [38, 36], headerRows: 0, moneyCells: [[4, 1], [5, 1], [6, 1], [7, 1]] },
+        {
+          name: 'Ventas',
+          rows: [
+            ['Ticket', 'Fecha', 'Cliente', 'Titular / alcance', 'Total', 'Cobrado', 'Saldo pendiente', 'Estado', 'Medio de pago'],
+            ...saleRows,
+          ],
+          widths: [14, 14, 26, 28, 16, 16, 18, 16, 20],
+          moneyColumns: [4, 5, 6],
+          dateColumns: [1],
+        },
+        {
+          name: 'Productos vendidos',
+          rows: [
+            ['Ticket', 'Fecha', 'Producto', 'Cantidad', 'Precio unitario', 'Ajustes', 'Subtotal de productos'],
+            ...productRows,
+          ],
+          widths: [14, 14, 34, 12, 18, 16, 22],
+          moneyColumns: [4, 5, 6],
+          dateColumns: [1],
+        },
+      ], 'ventas-' + generatedAt + '.xlsx', user.currencySymbol);
       setShowExportMenu(false);
     } catch {
       showToast('No se pudo exportar el archivo Excel.', 'error');
@@ -206,42 +316,54 @@ export default function Sales() {
     }
   };
 
-  const handleExportPDF = async () => {
+  const handleExportPDF = async (mode: 'summary' | 'detail' = 'detail') => {
     if (!user || exporting) return;
     setExporting(true);
     try {
-      const generatedAt = new Date().toISOString().slice(0, 10);
-      const filters = [
-        statusFilter === 'all' ? 'Todos los estados' : `Estado: ${statusFilter}`,
-        search.trim() ? `Búsqueda: ${search.trim()}` : null,
-      ].filter(Boolean).join(' · ');
+      const generatedAt = todayString();
+      const summaryRows: Array<[string, string]> = [
+        ['Total vendido', formatCurrency(totalSold)],
+        ['Cobrado de estas ventas', formatCurrency(totalCollected)],
+        ['Pendiente de cobro', formatCurrency(totalPending)],
+        ['Tickets y unidades', ticketCount + ' tickets · ' + unitCount + ' unidades'],
+        ['Ganancia bruta', costAvailableCount ? formatCurrency(grossProfit) : 'Sin datos de costo histórico'],
+        ['Costo histórico disponible', costAvailableCount + ' de ' + ticketCount + ' ventas'],
+      ];
       await exportToPDF({
         businessName: user.businessName,
         currencySymbol: user.currencySymbol,
-        rangeLabel: filters,
+        rangeLabel: reportPeriodLabel,
       }, {
-        title: 'Informe de ventas',
+        title: mode === 'summary' ? 'Resumen de ventas' : 'Detalle de ventas',
+        summaryOnly: mode === 'summary',
+        filtersLabel: filterLabel,
+        summaryRows,
         columns: [
+          { header: 'Ticket', dataKey: 'ticket' },
           { header: 'Fecha', dataKey: 'fecha' },
           { header: 'Producto', dataKey: 'producto' },
           { header: 'Cliente', dataKey: 'cliente' },
           { header: 'Cant.', dataKey: 'cantidad' },
           { header: 'Total', dataKey: 'total' },
-          { header: 'Método', dataKey: 'metodo' },
+          { header: 'Cobrado', dataKey: 'cobrado' },
+          { header: 'Saldo', dataKey: 'pendiente' },
           { header: 'Estado', dataKey: 'estado' },
-          { header: 'Vista', dataKey: 'vista' },
         ],
-        rows: filteredSales.map((sale) => ({
-          fecha: formatDate(sale.date),
-          producto: sale.productName,
-          cliente: sale.client || '-',
-          cantidad: sale.quantity,
-          total: formatCurrency(roundPrice(sale.total)),
-          metodo: sale.paymentMethod || '-',
-          estado: sale.status,
-          vista: sale.viewLabel,
-        })),
-        fileName: `ventas-${generatedAt}.pdf`,
+        rows: mode === 'detail' ? filteredSales.map(sale => {
+          const payment = paymentForSale(sale);
+          return {
+            ticket: getSaleTicketLabel(sale.id),
+            fecha: formatDate(sale.date),
+            producto: sale.productName,
+            cliente: sale.client || '-',
+            cantidad: sale.quantity,
+            total: formatCurrency(roundPrice(sale.total)),
+            cobrado: formatCurrency(payment.collected),
+            pendiente: formatCurrency(payment.pending),
+            estado: sale.status,
+          };
+        }) : [],
+        fileName: 'ventas-' + (mode === 'summary' ? 'resumen-' : 'detalle-') + generatedAt + '.pdf',
       });
       setShowExportMenu(false);
     } catch {
@@ -423,6 +545,14 @@ export default function Sales() {
     shippingEnabled,
     Number(formData.shippingAmount) || 0,
   );
+  const isMultiItemPosEdit = editingSale?.source === 'pos' && (editingSale.items?.length ?? 0) > 1;
+  const editingLineItems = isMultiItemPosEdit ? (formData.items ?? []) : [];
+  const multiItemSubtotal = editingLineItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+  const multiItemDiscount = editingLineItems.reduce((sum, item) => sum + item.quantity * (item.discount ?? 0), 0);
+  const multiItemTotal = Math.max(0, roundPrice(multiItemSubtotal - multiItemDiscount + (Number(formData.adjustment) || 0)));
+  const formTotalWithShipping = isMultiItemPosEdit
+    ? roundPrice(multiItemTotal + (shippingEnabled ? Number(formData.shippingAmount) || 0 : 0))
+    : saleTotalWithShipping;
 
   const saleMutationDenialReason = (
     sale: Sale,
@@ -479,7 +609,70 @@ export default function Sales() {
         return;
       }
 
-      if (editingSale) {
+      if (editingSale && paymentCorrectionOnly) {
+        if (protectedSaleIds.has(editingSale.id)) {
+          alert('Este ticket tiene pagos de cuenta corriente y no se puede corregir desde esta acción.');
+          return;
+        }
+        if (holdingsEnabled) {
+          const currentItems = editingSale.items?.length ? editingSale.items.map(item => ({
+            productId: item.productId,
+            productName: item.productName,
+            quantity: item.quantity,
+            unitPrice: item.price,
+            lineDiscount: item.discount ?? 0,
+          })) : [{
+            productId: editingSale.productId,
+            productName: editingSale.productName,
+            quantity: editingSale.quantity,
+            unitPrice: editingSale.unitPrice,
+            lineDiscount: 0,
+          }];
+          const payload = {
+            p_sale_id: editingSale.id,
+            p_items: buildAttributedSaleCommandItems(currentItems),
+            p_adjustment_total: editingSale.adjustment ?? 0,
+            p_status: 'Pagado',
+            p_payment_method: formData.paymentMethod ?? null,
+            p_customer_id: resolveAttributedSaleCustomerId(editingSale.id, null, customerTransactions),
+            p_client: editingSale.client ?? null,
+            p_date: editingSale.date,
+            p_shipping_amount: editingSale.shippingAmount ?? 0,
+          };
+          editIntentRef.current = resolveIdempotencyIntent('sale:edit', payload, editIntentRef.current);
+          await callRpc('edit_attributed_sale_with_shipping', { ...payload, p_idempotency_key: editIntentRef.current.key });
+          editIntentRef.current = null;
+        } else if (editingSale.source === 'pos') {
+          const items = editingSale.items?.length ? editingSale.items.map(item => ({
+            productId: item.productId, quantity: item.quantity, unitPrice: item.price, lineDiscount: item.discount ?? 0,
+          })) : [{
+            productId: editingSale.productId, quantity: editingSale.quantity, unitPrice: editingSale.unitPrice, lineDiscount: 0,
+          }];
+          await callRpc('edit_pos_sale_with_shipping', {
+            p_sale_id: editingSale.id,
+            p_new_items: items,
+            p_new_adjustment: editingSale.adjustment ?? 0,
+            p_new_status: 'Pagado',
+            p_new_payment_method: formData.paymentMethod ?? null,
+            p_new_customer_id: null,
+            p_new_date: editingSale.date,
+            p_shipping_amount: editingSale.shippingAmount ?? 0,
+          });
+        } else {
+          await callRpc('edit_sale_with_shipping', {
+            p_sale_id: editingSale.id,
+            p_new_product_id: editingSale.productId,
+            p_new_quantity: editingSale.quantity,
+            p_new_unit_price: editingSale.unitPrice,
+            p_new_adjustment: editingSale.adjustment ?? 0,
+            p_new_status: 'Pagado',
+            p_new_payment_method: formData.paymentMethod ?? null,
+            p_new_client: editingSale.client ?? null,
+            p_new_date: editingSale.date,
+            p_shipping_amount: editingSale.shippingAmount ?? 0,
+          });
+        }
+      } else if (editingSale) {
         const editPlan = getSalesPageEditPlan(editingSale);
         if ('reason' in editPlan) {
           alert(editPlan.reason);
@@ -496,14 +689,22 @@ export default function Sales() {
             selectedCustomer?.id ?? null,
             customerTransactions,
           );
-          const items = buildAttributedSaleCommandItems([{
-            productId: formData.productId ?? '',
-            productName: formData.productName ?? editingSale.productName,
-            quantity: Number(formData.quantity) || 0,
-            unitPrice: Number(formData.unitPrice) || 0,
-            lineDiscount: editingSale.items?.[0]?.discount ?? 0,
-            ...(preferredOwnerId ? { preferredOwnerId } : {}),
-          }]);
+          const items = buildAttributedSaleCommandItems(isMultiItemPosEdit
+            ? editingLineItems.map(item => ({
+              productId: item.productId,
+              productName: item.productName,
+              quantity: Number(item.quantity) || 0,
+              unitPrice: Number(item.price) || 0,
+              lineDiscount: Number(item.discount) || 0,
+            }))
+            : [{
+              productId: formData.productId ?? '',
+              productName: formData.productName ?? editingSale.productName,
+              quantity: Number(formData.quantity) || 0,
+              unitPrice: Number(formData.unitPrice) || 0,
+              lineDiscount: editingSale.items?.[0]?.discount ?? 0,
+              ...(preferredOwnerId ? { preferredOwnerId } : {}),
+            }]);
           const payload = {
             p_sale_id: editingSale.id,
             p_items: items,
@@ -524,12 +725,19 @@ export default function Sales() {
         } else if (editPlan.rpc === 'edit_pos_sale') {
           await callRpc('edit_pos_sale_with_shipping', {
             p_sale_id: editingSale.id,
-            p_new_items: [{
-              productId: formData.productId,
-              quantity: formData.quantity,
-              unitPrice: formData.unitPrice,
-              lineDiscount: editingSale.items?.[0]?.discount ?? 0,
-            }],
+            p_new_items: isMultiItemPosEdit
+              ? editingLineItems.map(item => ({
+                productId: item.productId,
+                quantity: Number(item.quantity) || 0,
+                unitPrice: Number(item.price) || 0,
+                lineDiscount: Number(item.discount) || 0,
+              }))
+              : [{
+                productId: formData.productId,
+                quantity: formData.quantity,
+                unitPrice: formData.unitPrice,
+                lineDiscount: editingSale.items?.[0]?.discount ?? 0,
+              }],
             p_new_adjustment: formData.adjustment ?? 0,
             p_new_status: formData.status,
             p_new_payment_method: formData.paymentMethod ?? null,
@@ -601,6 +809,7 @@ export default function Sales() {
 
       setIsModalOpen(false);
       setEditingSale(null);
+      setPaymentCorrectionOnly(false);
       setFormData({
         date: todayString(),
         productId: '',
@@ -631,6 +840,11 @@ export default function Sales() {
   };
 
   const settlements = useMemo(() => buildSaleSettlements(sales, customerTransactions), [sales, customerTransactions]);
+  const formPaidAmount = editingSale
+    ? settlements.get(editingSale.id)?.paid ?? (editingSale.status === 'Pagado' ? editingSale.total : 0)
+    : 0;
+  const formIsPending = formData.status !== 'Pagado' || (!editingSale && isCreditSale && Boolean(selectedCustomer));
+  const formPendingBalance = formIsPending ? Math.max(0, roundPrice(formTotalWithShipping - formPaidAmount)) : 0;
   const protectedSaleIds = useMemo(() => new Set(customerTransactions
     .filter(transaction => transaction.accountPayment && transaction.relatedSaleId)
     .map(transaction => transaction.relatedSaleId)), [customerTransactions]);
@@ -739,7 +953,9 @@ export default function Sales() {
       return;
     }
     setEditingSale(sale);
-    setFormData(sale);
+    setPaymentCorrectionOnly(false);
+    setFormData({ ...sale, items: sale.items ?? [] });
+    setEditingLineIndex(null);
     setShippingEnabled(Number(sale.shippingAmount) > 0);
     const ownerIds = [...new Set(
       saleAllocations
@@ -756,72 +972,213 @@ export default function Sales() {
     setIsModalOpen(true);
   };
 
+  const openPaymentCorrection = (projection: OwnerSaleProjection) => {
+    const sale = sales.find(candidate => candidate.id === projection.id);
+    if (!sale || !canWrite || sale.status !== 'Pagado' || isQuoteSale(sale) || protectedSaleIds.has(sale.id)) return;
+    const mutationDenial = saleMutationDenialReason(sale, projection);
+    if (mutationDenial) {
+      alert(mutationDenial);
+      return;
+    }
+    setEditingSale(sale);
+    setPaymentCorrectionOnly(true);
+    setFormData({ ...sale, items: sale.items ?? [], status: 'Pagado' });
+    setShippingEnabled(Number(sale.shippingAmount) > 0);
+    setSelectedCustomer(null);
+    setIsModalOpen(true);
+  };
+
   // Attribution changes only with the underlying dataset/scope, not each
   // search keystroke. Keep complete economics separate from display pages.
   const projectedSales = useMemo(() => projectAttributedSales(
     sales, saleAllocations, saleItems, allowedInventoryOwnerIds, ownerFilter, holdingsEnabled,
   ), [sales, saleAllocations, saleItems, allowedInventoryOwnerIds, ownerFilter, holdingsEnabled]);
+  const salesById = useMemo(() => new Map(sales.map(sale => [sale.id, sale])), [sales]);
+  const activeAllocationsBySaleId = useMemo(() => {
+    const grouped = new Map<string, SaleItemAllocation[]>();
+    for (const allocation of saleAllocations) {
+      if (allocation.reversedAt) continue;
+      const list = grouped.get(allocation.saleIdSnapshot) ?? [];
+      list.push(allocation);
+      grouped.set(allocation.saleIdSnapshot, list);
+    }
+    return grouped;
+  }, [saleAllocations]);
 
-  const { filteredSales, totalCollected, totalPending, totalSold } = useMemo(() => {
+  const periodRange = useMemo(
+    () => getSalesDateRange(periodPreset, customFrom, customTo),
+    [periodPreset, customFrom, customTo],
+  );
+  const periodLabel = useMemo(
+    () => formatSalesRange(periodRange, periodPreset),
+    [periodRange, periodPreset],
+  );
+  const filterLabel = [
+    statusFilter === 'all' ? null : 'Estado: ' + statusFilter,
+    deferredSearch.trim() ? 'Búsqueda: ' + deferredSearch.trim() : null,
+    holdingsEnabled && ownerFilter !== 'all'
+      ? 'Titular: ' + (inventoryOwners.find(owner => owner.id === ownerFilter)?.name ?? 'seleccionado')
+      : null,
+    zeroOnly ? 'Ventas en $0' : null,
+  ].filter(Boolean).join(' · ') || 'Sin filtros adicionales';
+
+  const { filteredSales, totalCollected, totalPending, totalSold, ticketCount, unitCount, grossProfit, costAvailableCount } = useMemo(() => {
+    const selected: Array<OwnerSaleProjection & { isSearchSubset?: boolean }> = [];
+    const searchValue = deferredSearch.trim().toLocaleLowerCase('es-AR');
+
+    for (const sale of projectedSales) {
+      if (periodRange.from && sale.date < periodRange.from) continue;
+      if (periodRange.to && sale.date > periodRange.to) continue;
+      const matchesStatus = statusFilter === 'all'
+        || sale.status === statusFilter
+        || (statusFilter === 'Pendiente' && sale.status === 'No Pagado');
+      if (!matchesStatus) continue;
+
+      const original = sales.find(candidate => candidate.id === sale.id);
+      const matchesClient = Boolean(searchValue && sale.client?.toLocaleLowerCase('es-AR').includes(searchValue));
+      const matchingItems = searchValue
+        ? sale.items.filter(item => item.productName.toLocaleLowerCase('es-AR').includes(searchValue))
+        : sale.items;
+      if (searchValue && !matchesClient && matchingItems.length === 0
+        && !sale.productName.toLocaleLowerCase('es-AR').includes(searchValue)) continue;
+
+      let row: OwnerSaleProjection & { isSearchSubset?: boolean } = sale;
+      const isSearchSubset = Boolean(searchValue && !matchesClient && matchingItems.length > 0 && matchingItems.length < sale.items.length);
+      if (isSearchSubset) {
+        const subtotal = sale.items.reduce((sum, item) => sum + item.quantity * item.unitPrice - item.discount, 0);
+        const matchedRevenue = matchingItems.reduce((sum, item) => {
+          if (holdingsEnabled) return sum + item.revenue;
+          const lineSubtotal = item.quantity * item.unitPrice - item.discount;
+          const adjustmentShare = subtotal !== 0 ? (original?.adjustment ?? 0) * lineSubtotal / subtotal : 0;
+          return sum + lineSubtotal + adjustmentShare;
+        }, 0);
+        row = {
+          ...sale,
+          productName: [...new Set(matchingItems.map(item => item.productName))].join(' · '),
+          quantity: matchingItems.reduce((sum, item) => sum + item.quantity, 0),
+          unitPrice: matchingItems.length === 1 ? matchingItems[0].unitPrice : null,
+          adjustment: matchingItems.reduce((sum, item) => sum + item.adjustment, 0),
+          total: roundPrice(matchedRevenue),
+          costTotal: roundPrice(matchingItems.reduce((sum, item) => sum + item.cost, 0)),
+          items: matchingItems,
+          isSearchSubset: true,
+        };
+      }
+      if (zeroOnly && Math.abs(roundPrice(row.total)) > 0.009) continue;
+      selected.push(row);
+    }
+
     let totalSold = 0;
     let totalCollected = 0;
     let totalPending = 0;
-    const searchValue = deferredSearch.toLowerCase();
-
-    const filteredSales = projectedSales.filter((sale) => {
-      const roundedTotal = roundPrice(sale.total);
-      totalSold += roundedTotal;
-
+    let unitCount = 0;
+    let grossProfit = 0;
+    let costAvailableCount = 0;
+    for (const sale of selected) {
+      const original = sales.find(candidate => candidate.id === sale.id);
+      totalSold += roundPrice(sale.total);
+      unitCount += sale.quantity;
       const settlement = settlements.get(sale.id);
-      const fullTotal = settlement?.total ?? sale.total;
+      const fullTotal = settlement?.total ?? original?.total ?? sale.total;
       const fraction = fullTotal > 0 ? sale.total / fullTotal : 0;
       if (settlement) {
         totalCollected += settlement.paid * fraction;
         totalPending += settlement.pending * fraction;
       }
 
-      const matchesSearch =
-        (sale.productName ?? '').toLowerCase().includes(searchValue) ||
-        sale.client?.toLowerCase().includes(searchValue);
-      const matchesStatus =
-        statusFilter === 'all' ||
-        sale.status === statusFilter ||
-        (statusFilter === 'Pendiente' && sale.status === 'No Pagado');
-
-      return matchesSearch && matchesStatus;
-    });
-
-    return { filteredSales, totalCollected, totalPending, totalSold };
-  }, [deferredSearch, projectedSales, statusFilter, settlements, sales]);
-  const pagination = usePagination(filteredSales);
-  const monthOptions = useMemo(() => {
-    const months = new Set(projectedSales.map(sale => sale.date.slice(0, 7)).filter(Boolean));
-    months.add(todayString().slice(0, 7));
-    return [...months].sort((a, b) => b.localeCompare(a)).map(value => {
-      const [year, month] = value.split('-').map(Number);
-      return {
-        value,
-        label: new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric' })
-          .format(new Date(year, month - 1, 1)),
-      };
-    });
-  }, [projectedSales]);
-  const monthlySummary = useMemo(() => {
-    let totalSold = 0;
-    let totalCollected = 0;
-    let totalPending = 0;
-    for (const sale of projectedSales) {
-      if (!sale.date.startsWith(selectedMonth)) continue;
-      totalSold += roundPrice(sale.total);
-      const settlement = settlements.get(sale.id);
-      if (!settlement) continue;
-      const fullTotal = settlement.total || sale.total;
-      const fraction = fullTotal > 0 ? sale.total / fullTotal : 0;
-      totalCollected += settlement.paid * fraction;
-      totalPending += settlement.pending * fraction;
+      const itemIds = new Set(sale.items.map(item => item.saleItemId));
+      const allocations = (activeAllocationsBySaleId.get(sale.id) ?? [])
+        .filter(allocation => itemIds.has(allocation.saleItemId));
+      const hasHistoricalCost = holdingsEnabled && sale.items.length > 0
+        && sale.items.every(item => {
+          const itemAllocations = allocations.filter(allocation => allocation.saleItemId === item.saleItemId);
+          return itemAllocations.length > 0 && itemAllocations.every(allocation => allocation.allocationSource !== 'legacy_estimated');
+        });
+      if (hasHistoricalCost) {
+        costAvailableCount += 1;
+        const productRevenue = sale.isSearchSubset
+          ? sale.total
+          : Math.max(0, sale.total - Number(original?.shippingAmount ?? 0));
+        grossProfit += productRevenue - sale.costTotal;
+      }
     }
-    return { totalSold, totalCollected, totalPending };
-  }, [projectedSales, selectedMonth, settlements]);
+    return {
+      filteredSales: selected,
+      totalCollected: roundPrice(totalCollected),
+      totalPending: roundPrice(totalPending),
+      totalSold: roundPrice(totalSold),
+      ticketCount: selected.length,
+      unitCount,
+      grossProfit: roundPrice(grossProfit),
+      costAvailableCount,
+    };
+  }, [
+    deferredSearch, projectedSales, statusFilter, settlements, sales, periodRange,
+    zeroOnly, holdingsEnabled, activeAllocationsBySaleId,
+  ]);
+  const pagination = usePagination(filteredSales);
+  const costMissingCount = Math.max(0, filteredSales.length - costAvailableCount);
+  const selectedDateBounds = filteredSales.reduce((bounds, sale) => ({
+    from: sale.date < bounds.from ? sale.date : bounds.from,
+    to: sale.date > bounds.to ? sale.date : bounds.to,
+  }), { from: filteredSales[0]?.date ?? '', to: filteredSales[0]?.date ?? '' });
+  const reportPeriodLabel = periodPreset === 'all' && filteredSales.length
+    ? formatDate(selectedDateBounds.from) + ' al ' + formatDate(selectedDateBounds.to)
+    : periodLabel;
+  const debtByCustomer = useMemo(() => {
+    const groups = new Map<string, { id?: string; name: string; amount: number; oldestDate: string; sales: OwnerSaleProjection[] }>();
+    for (const sale of filteredSales) {
+      const settlement = settlements.get(sale.id);
+      const original = sales.find(candidate => candidate.id === sale.id);
+      const fullTotal = settlement?.total ?? original?.total ?? sale.total;
+      const pending = Math.max(0, (settlement?.pending ?? (isPendingSaleStatus(sale.status) ? sale.total : 0)) * (fullTotal > 0 ? sale.total / fullTotal : 1));
+      if (pending <= 0) continue;
+      const customerId = settlement?.customerId;
+      const key = customerId ?? 'name:' + (sale.client || 'Sin cliente');
+      const group = groups.get(key) ?? {
+        id: customerId,
+        name: sale.client || 'Cliente sin identificar',
+        amount: 0,
+        oldestDate: sale.date,
+        sales: [],
+      };
+      group.amount += pending;
+      if (sale.date < group.oldestDate) group.oldestDate = sale.date;
+      group.sales.push(sale);
+      groups.set(key, group);
+    }
+    return [...groups.values()].sort((a, b) => b.amount - a.amount);
+  }, [filteredSales, settlements, sales]);
+  const collections = useMemo(() => {
+    const payments = customerTransactions
+      .filter(transaction => transaction.type === 'payment' && transaction.relatedSaleId)
+      .map(transaction => {
+        const sale = salesById.get(transaction.relatedSaleId!);
+        return sale ? {
+          id: transaction.id,
+          saleId: sale.id,
+          date: transaction.date.slice(0, 10),
+          amount: Math.abs(transaction.amount),
+          client: sale.client || customers.find(customer => customer.id === transaction.customerId)?.name || 'Cliente',
+          method: transaction.paymentMethod || 'Sin método',
+        } : null;
+      })
+      .filter((payment): payment is NonNullable<typeof payment> => Boolean(payment));
+    const paidSalesWithoutLedger = sales.filter(sale =>
+      sale.status === 'Pagado'
+      && !customerTransactions.some(transaction => transaction.relatedSaleId === sale.id && transaction.type === 'payment'),
+    ).map(sale => ({
+      id: 'sale:' + sale.id,
+      saleId: sale.id,
+      date: sale.date.slice(0, 10),
+      amount: sale.total,
+      client: sale.client || 'Venta directa',
+      method: sale.paymentMethod || 'Sin método',
+    }));
+    return [...payments, ...paidSalesWithoutLedger].filter(payment =>
+      payment.date >= collectionsFrom && payment.date <= collectionsTo);
+  }, [customerTransactions, sales, customers, collectionsFrom, collectionsTo]);
+  const collectionsTotal = roundPrice(collections.reduce((sum, payment) => sum + payment.amount, 0));
 
   if (loadError) return <div role="alert" className="p-6"><p>{loadError}</p><button onClick={fetchData}>Reintentar</button></div>;
 
@@ -841,6 +1198,8 @@ export default function Sales() {
       onCreate={openNewSale}
       onOpenPos={() => navigate('/pos')}
       onEdit={openSaleForEdit}
+      onCorrectPayment={openPaymentCorrection}
+      canCorrectPayment={sale => sale.status === 'Pagado' && sale.source !== 'quote' && !protectedSaleIds.has(sale.id)}
       onDelete={handleDelete}
       onToggleStatus={handleToggleStatus}
       search={search}
@@ -849,12 +1208,25 @@ export default function Sales() {
       onStatusFilterChange={setStatusFilter}
       ownerFilter={ownerFilter}
       onOwnerFilterChange={setOwnerFilter}
-      monthOptions={monthOptions}
-      selectedMonth={selectedMonth}
-      onSelectedMonthChange={setSelectedMonth}
-      totalSold={monthlySummary.totalSold}
-      totalCollected={monthlySummary.totalCollected}
-      totalPending={monthlySummary.totalPending}
+      periodPreset={periodPreset}
+      onPeriodPresetChange={setPeriodPreset}
+      customFrom={customFrom}
+      customTo={customTo}
+      onCustomFromChange={setCustomFrom}
+      onCustomToChange={setCustomTo}
+      periodLabel={periodLabel}
+      zeroOnly={zeroOnly}
+      onZeroOnlyChange={setZeroOnly}
+      totalSold={totalSold}
+      totalCollected={totalCollected}
+      totalPending={totalPending}
+      ticketCount={ticketCount}
+      unitCount={unitCount}
+      grossProfit={grossProfit}
+      costAvailableCount={costAvailableCount}
+      costMissingCount={costMissingCount}
+      onOpenInsight={setActiveInsight}
+      onOpenCollections={() => setShowCollectionsModal(true)}
       formatAmount={amount => formatCurrency(roundPrice(amount))}
       onExportExcel={handleExportExcel}
       onExportPdf={handleExportPDF}
@@ -888,14 +1260,13 @@ export default function Sales() {
                   <FileSpreadsheet size={16} className="text-emerald-600" />
                   Exportar Excel (.xlsx)
                 </button>
-                <button
-                  onClick={handleExportPDF}
-                  disabled={exporting}
-                  className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3 border-t border-slate-100 dark:border-slate-800"
-                >
-                  <FileDown size={16} className="text-rose-600" />
-                  Exportar PDF
+                <button onClick={() => handleExportPDF('summary')} disabled={exporting}
+                  className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3 border-t border-slate-100 dark:border-slate-800">
+                  <FileDown size={16} className="text-rose-600" /> Resumen PDF (1 página)
                 </button>
+                <button onClick={() => handleExportPDF('detail')} disabled={exporting}
+                  className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3 border-t border-slate-100 dark:border-slate-800">
+                  <FileDown size={16} className="text-rose-600" /> Detalle de ventas
               </div>
             )}
           </div>
@@ -948,35 +1319,50 @@ export default function Sales() {
         </div>
       )}
 
+      <section aria-label="Período de ventas" className="operational-card flex flex-wrap items-end justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Período
+            <select aria-label="Período de ventas" value={periodPreset} onChange={event => setPeriodPreset(event.target.value as SalesPeriodPreset)}
+              className="mt-1 block min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+              <option value="today">Hoy</option><option value="week">Esta semana</option><option value="month">Este mes</option><option value="custom">Personalizado</option><option value="all">Todo el historial</option>
+            </select>
+          </label>
+          {periodPreset === 'custom' && <>
+            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Desde<input type="date" aria-label="Desde" value={customFrom} onChange={event => setCustomFrom(event.target.value)} className="mt-1 block min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Hasta<input type="date" aria-label="Hasta" value={customTo} onChange={event => setCustomTo(event.target.value)} className="mt-1 block min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+          </>}
+          <p className="pb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">{periodLabel}</p>
+        </div>
+        <button type="button" onClick={() => setShowCollectionsModal(true)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-[#365fad] hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+          Cobros por fecha de pago
+        </button>
+      </section>
+
       {/* Summary Strip */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="operational-card bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Vendido</p>
-            <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">{formatCurrency(totalSold)}</p>
-          </div>
-          <div className="p-2 bg-indigo-50 text-[#365fad] dark:bg-indigo-900/20 dark:text-indigo-400 rounded-xl">
-            <ShoppingCart size={20} />
-          </div>
-        </div>
-        <div className="operational-card bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Cobrado</p>
-            <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totalCollected)}</p>
-          </div>
-          <div className="p-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 rounded-xl">
-            <CheckCircle2 size={20} />
-          </div>
-        </div>
-        <div className="operational-card bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pendiente de Cobro</p>
-            <p className="text-xl font-bold text-amber-600 dark:text-amber-400 mt-1">{formatCurrency(totalPending)}</p>
-          </div>
-          <div className="p-2 bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 rounded-xl">
-            <Clock size={20} />
-          </div>
-        </div>
+        <button type="button" onClick={() => setActiveInsight('sold')} className="operational-card w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#365fad] dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center justify-between gap-3"><div>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Vendido en el período</p>
+            <p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{formatCurrency(totalSold)}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{ticketCount} tickets · {unitCount} unidades</p>
+            <p className="mt-1 text-sm text-emerald-600 dark:text-emerald-400">Cobrado de estas ventas: {formatCurrency(totalCollected)}</p>
+          </div><div className="rounded-xl bg-indigo-50 p-2 text-[#365fad] dark:bg-indigo-900/20 dark:text-indigo-400"><ShoppingCart size={20} /></div></div>
+        </button>
+        <button type="button" onClick={() => setActiveInsight('profit')} className="operational-card w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-500 dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center justify-between gap-3"><div>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Ganancia bruta</p>
+            <p className="mt-1 text-xl font-bold text-emerald-600 dark:text-emerald-400">{costAvailableCount ? formatCurrency(grossProfit) : 'Sin datos'}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Costo histórico en {costAvailableCount} de {ticketCount} ventas{costMissingCount ? ' · ' + costMissingCount + ' incompletas' : ''}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">El envío se excluye del cálculo.</p>
+          </div><div className="rounded-xl bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"><CheckCircle2 size={20} /></div></div>
+        </button>
+        <button type="button" onClick={() => setActiveInsight('pending')} className="operational-card w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-amber-500 dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center justify-between gap-3"><div>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Por cobrar</p>
+            <p className="mt-1 text-xl font-bold text-amber-600 dark:text-amber-400">{formatCurrency(totalPending)}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Tocar para ver cliente, antigüedad y registrar cobro.</p>
+          </div><div className="rounded-xl bg-amber-50 p-2 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400"><Clock size={20} /></div></div>
+        </button>
       </div>
 
       {/* Filters */}
@@ -1020,6 +1406,12 @@ export default function Sales() {
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
           </div>
         )}
+        <button type="button" aria-pressed={zeroOnly} onClick={() => setZeroOnly(value => !value)}
+          className={cn('min-h-11 rounded-xl border px-3 text-sm font-semibold transition-colors', zeroOnly
+            ? 'border-[#365fad] bg-indigo-50 text-[#284b91] dark:bg-indigo-900/20 dark:text-indigo-300'
+            : 'border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400')}>
+          Ventas en $0
+        </button>
       </div>
 
       {/* Table */}
@@ -1043,7 +1435,7 @@ export default function Sales() {
               {pagination.rows.map((s) => (
                 <React.Fragment key={s.id}>
                   <tr className="table-row text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(s.date)}</td>
+                  <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap"><span className="block">{formatDate(s.date)}</span><span className="mt-1 block font-mono text-[9px] text-slate-400">Ticket {getSaleTicketLabel(s.id)}</span></td>
                   <td className="px-6 py-4">
                     <button
                       type="button"
@@ -1069,16 +1461,17 @@ export default function Sales() {
                             Presupuesto
                           </span>
                         )}
-                        {holdingsEnabled && (
+                        {holdingsEnabled && s.isPartial && (
                           <span className={cn(
                             'text-[9px] font-bold uppercase px-1.5 py-0.5 rounded',
                             s.isPartial
                               ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                               : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
                           )}>
-                            {s.viewLabel}
+                            {s.isPartial ? 'Vista parcial' : null}
                           </span>
                         )}
+                        {s.isSearchSubset && <span className="text-[9px] font-semibold uppercase text-indigo-500">Productos coincidentes</span>}
                         {s.client && <p className="text-[10px] text-slate-400 uppercase font-bold">{s.client}</p>}
                       </div>
                     </button>
@@ -1142,8 +1535,12 @@ export default function Sales() {
                       ticketHasFullOperableScope(s),
                     ) ? (
                     <div className="flex items-center justify-end gap-2">
+                      {s.status === 'Pagado' && !protectedSaleIds.has(s.id) && s.source !== 'quote' && (
+                        <button onClick={() => openPaymentCorrection(s)} disabled={!canWrite || Boolean(projectedSaleMutationDenialReason(s))}
+                          title="Corregir medio de pago" className="p-2 text-slate-400 transition-colors hover:text-[#365fad] disabled:opacity-40"><CreditCard size={18} /></button>
+                      )}
                       <button
-                        onClick={() => openSaleForEdit(s)}
+                        onClick={() => openSaleForEdit(s)
                         disabled={!canWrite || Boolean(projectedSaleMutationDenialReason(s))}
                         title={!canWrite
                           ? 'Sin permiso'
@@ -1217,14 +1614,79 @@ export default function Sales() {
       </div>
 
     </div>
+      <Modal
+        isOpen={activeInsight !== null}
+        onClose={() => setActiveInsight(null)}
+        title={activeInsight === 'sold' ? 'Ventas del período' : activeInsight === 'profit' ? 'Ganancia bruta' : 'Por cobrar'}
+      >
+        {activeInsight === 'sold' && <div className="max-h-[65vh] space-y-3 overflow-y-auto">
+          <p className="text-sm text-slate-500 dark:text-slate-400">{periodLabel} · {ticketCount} tickets · {unitCount} unidades · Cobrado {formatCurrency(totalCollected)}</p>
+          {filteredSales.map(sale => <div key={sale.id} className="flex justify-between gap-3 border-b border-slate-100 py-3 text-sm dark:border-slate-800">
+            <div><p className="font-semibold text-slate-900 dark:text-white">Ticket {getSaleTicketLabel(sale.id)} · {sale.productName}</p><p className="mt-1 text-xs text-slate-500">{formatDate(sale.date)} · {sale.quantity} unidades · {sale.client || 'Sin cliente'}</p></div>
+            <strong className="shrink-0 text-slate-900 dark:text-white">{formatCurrency(roundPrice(sale.total))}</strong>
+          </div>)}
+          {filteredSales.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No hay ventas para esta selección.</p>}
+        </div>}
+        {activeInsight === 'profit' && <div className="space-y-4">
+          <div className="rounded-xl bg-emerald-50 p-4 dark:bg-emerald-900/20">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Ganancia bruta con costo histórico</p>
+            <p className="mt-1 text-2xl font-black text-emerald-800 dark:text-emerald-200">{costAvailableCount ? formatCurrency(grossProfit) : 'Sin datos'}</p>
+          </div>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Se calcula con los productos, descuentos y ajustes visibles; el envío queda separado. El costo histórico está disponible en {costAvailableCount} de {ticketCount} tickets{costMissingCount ? ', y faltan datos completos en ' + costMissingCount + '.' : '.'}</p>
+        </div>}
+        {activeInsight === 'pending' && <div className="max-h-[65vh] space-y-3 overflow-y-auto">
+          <p className="text-sm text-slate-500 dark:text-slate-400">{periodLabel} · Saldo pendiente total {formatCurrency(totalPending)}</p>
+          {debtByCustomer.map(group => {
+            const days = Math.max(0, Math.floor((Date.now() - new Date(group.oldestDate + 'T12:00:00').getTime()) / 86400000));
+            const firstSale = group.sales[0];
+            return <section key={group.id ?? group.name} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+              <div className="flex items-start justify-between gap-3">
+                <div><h3 className="font-bold text-slate-900 dark:text-white">{group.name}</h3><p className="mt-1 text-xs text-slate-500">Deuda más antigua: hace {days} días · {formatDate(group.oldestDate)}</p></div>
+                <strong className="shrink-0 text-amber-600">{formatCurrency(roundPrice(group.amount))}</strong>
+              </div>
+              <ul className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">
+                {group.sales.map(sale => <li key={sale.id} className="flex justify-between gap-3"><span>Ticket {getSaleTicketLabel(sale.id)} · {formatDate(sale.date)}</span><span>{formatCurrency(roundPrice((settlements.get(sale.id)?.pending ?? sale.total) * (settlements.get(sale.id)?.total ? sale.total / settlements.get(sale.id)!.total : 1)))}</span></li>)}
+              </ul>
+              {group.id ? <button type="button" onClick={() => { setActiveInsight(null); navigate('/clientes?customer=' + encodeURIComponent(group.id!) + '&sale=' + encodeURIComponent(firstSale.id)); }}
+                className="mt-4 min-h-11 w-full rounded-xl bg-[#365fad] px-4 text-sm font-semibold text-white">Registrar cobro</button>
+                : <p className="mt-3 text-xs text-slate-500">Vinculá este nombre con un cliente para registrar el cobro desde su cuenta.</p>}
+            </section>;
+          })}
+          {debtByCustomer.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No hay saldos pendientes en esta selección.</p>}
+        </div>}
+      </Modal>
+
+      <Modal isOpen={showCollectionsModal} onClose={() => setShowCollectionsModal(false)} title="Cobros por fecha de pago">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">La fecha del cobro se consulta por separado de la fecha original de la venta.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-xs font-semibold text-slate-500">Desde<input type="date" value={collectionsFrom} onChange={event => setCollectionsFrom(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+            <label className="text-xs font-semibold text-slate-500">Hasta<input type="date" value={collectionsTo} onChange={event => setCollectionsTo(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+          </div>
+          <div className="rounded-xl bg-emerald-50 p-4 dark:bg-emerald-900/20"><p className="text-xs font-bold uppercase text-emerald-700 dark:text-emerald-300">Ingresado en esas fechas</p><p className="mt-1 text-2xl font-black text-emerald-800 dark:text-emerald-200">{formatCurrency(collectionsTotal)}</p></div>
+          <div className="max-h-[45vh] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+            {collections.map(payment => <div key={payment.id} className="flex justify-between gap-3 py-3 text-sm">
+              <div><p className="font-semibold text-slate-900 dark:text-white">{payment.client}</p><p className="mt-1 text-xs text-slate-500">Ticket {getSaleTicketLabel(payment.saleId)} · {formatDate(payment.date)} · {payment.method}</p></div>
+              <strong className="shrink-0 text-emerald-700 dark:text-emerald-300">{formatCurrency(payment.amount)}</strong>
+            </div>)}
+            {collections.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No hay cobros registrados en ese rango.</p>}
+          </div>
+        </div>
+      </Modal>
+
       {/* Add/Edit Modal */}
       <Modal 
         isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        title={editingSale ? 'Editar Venta' : 'Nueva Venta'}
+        onClose={() => { setIsModalOpen(false); setPaymentCorrectionOnly(false); }} 
+        title={paymentCorrectionOnly ? 'Corregir medio de pago' : editingSale ? 'Editar Venta' : 'Nueva Venta'}
       >
         <form onSubmit={handleSave} className="operational-page space-y-6">
+          {paymentCorrectionOnly && <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-200">
+            Se actualizará únicamente el medio de pago del ticket {getSaleTicketLabel(editingSale?.id ?? '')}. La fecha, los productos, el importe y el stock se conservan.
+          </div>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2"><h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">Datos del ticket</h3></div>
+            {editingSale && <div className="md:col-span-2 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800"><span className="text-slate-500">Número de venta </span><strong className="font-mono text-slate-900 dark:text-white">{getSaleTicketLabel(editingSale.id)}</strong></div>}
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Fecha</label>
               <input 
@@ -1238,68 +1700,132 @@ export default function Sales() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Producto</label>
-              <ProductSearchSelect
-                products={products}
-                inventoryOwners={holdingsEnabled ? [] : inventoryOwners}
-                value={formData.productId || ''}
-                onChange={handleProductChange}
-                placeholder="Buscar por nombre o categoría..."
-                required
-              />
-            </div>
-
-            {holdingsEnabled && formData.productId && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  Titular preferido
-                </label>
-                <select
-                  value={preferredOwnerId}
-                  onChange={(event) => setPreferredOwnerId(event.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
-                >
-                  <option value="">
-                    Automatico{defaultInventoryOwnerId ? ' (predeterminado y prioridad)' : ''}
-                  </option>
-                  {selectedProductOwnerOptions.map((owner) => {
-                    const holding = holdings.find((candidate) => (
-                      candidate.productId === formData.productId
-                      && candidate.inventoryOwnerId === owner.id
-                      && candidate.active
-                    ));
-                    return <option key={owner.id} value={owner.id}>{owner.name} · Stock {holding?.stock ?? 0}</option>;
-                  })}
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cantidad</label>
-              <NumberField
-                required
-                min="1"
-                integer
-                aria-label="Cantidad"
-                value={formData.quantity}
-                onChange={(e) => setFormData(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cliente (Opcional)</label>
+              <input
+                type="text"
+                value={formData.client}
+                onChange={(e) => setFormData(prev => ({ ...prev, client: e.target.value }))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
+                placeholder="Nombre del cliente"
               />
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio Unitario</label>
-              <div>
-                <MoneyInput
-                  required
-                  min="0"
-                  aria-label="Precio unitario"
-                  value={formData.unitPrice}
-                  onChange={(e) => setFormData(prev => ({ ...prev, unitPrice: Number(e.target.value) }))}
-                  className="w-full pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
-                />
-              </div>
-            </div>
+            <div className="md:col-span-2"><h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">Productos</h3></div>
+            {isMultiItemPosEdit ? (
+              <section className="md:col-span-2 space-y-3 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white">Productos del ticket</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">La corrección conserva el mismo número de venta y actualiza el stock con el historial.</p>
+                </div>
+                {editingLineItems.map((item, index) => {
+                  const selectedProduct = products.find(product => product.id === item.productId);
+                  const lineSubtotal = Math.max(0, item.quantity * (item.price - (item.discount ?? 0)));
+                  return (
+                    <div key={index} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        {selectedProduct && <ProductThumbnail product={selectedProduct} sizeClassName="size-11" />}
+                        <div className="min-w-0 flex-1">
+                          {editingLineIndex === index ? (
+                            <ProductSearchSelect
+                              products={products}
+                              inventoryOwners={holdingsEnabled ? [] : inventoryOwners}
+                              value={item.productId}
+                              onChange={productId => {
+                                const product = products.find(candidate => candidate.id === productId);
+                                setFormData(previous => {
+                                  const currentItems = previous.items ?? [];
+                                  const duplicateIndex = currentItems.findIndex((line, lineIndex) => lineIndex !== index && line.productId === productId);
+                                  if (duplicateIndex >= 0) {
+                                    const selectedLine = currentItems[index];
+                                    return {
+                                      ...previous,
+                                      items: currentItems
+                                        .map((line, lineIndex) => lineIndex === duplicateIndex
+                                          ? { ...line, quantity: line.quantity + (selectedLine?.quantity ?? 0) }
+                                          : line)
+                                        .filter((_, lineIndex) => lineIndex !== index),
+                                    };
+                                  }
+                                  return {
+                                    ...previous,
+                                    items: currentItems.map((line, lineIndex) => lineIndex === index
+                                      ? { ...line, productId, productName: product?.name ?? line.productName, price: product?.salePrice ?? line.price }
+                                      : line),
+                                  };
+                                });
+                                setEditingLineIndex(null);
+                              }}
+                              placeholder="Buscar producto..."
+                              required
+                            />
+                          ) : (
+                            <button type="button" onClick={() => setEditingLineIndex(index)} className="block max-w-full truncate text-left font-semibold text-slate-900 dark:text-white">
+                              {item.productName || 'Elegir producto'} <span className="ml-1 text-xs font-medium text-[#365fad]">Cambiar producto</span>
+                            </button>
+                          )}
+                          <div className="mt-2 grid grid-cols-3 gap-2">
+                            <label className="text-[11px] text-slate-500">Cantidad
+                              <NumberField min="1" integer aria-label={"Cantidad de " + item.productName} value={item.quantity}
+                                onChange={event => setFormData(previous => ({ ...previous, items: (previous.items ?? []).map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(event.target.value) } : line) }))}
+                                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                            </label>
+                            <label className="text-[11px] text-slate-500">Precio unitario
+                              <MoneyInput aria-label={"Precio de " + item.productName} value={item.price}
+                                onChange={event => setFormData(previous => ({ ...previous, items: (previous.items ?? []).map((line, lineIndex) => lineIndex === index ? { ...line, price: Number(event.target.value) } : line) }))}
+                                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                            </label>
+                            <div className="text-[11px] text-slate-500">Subtotal
+                              <p className="mt-2 text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(roundPrice(lineSubtotal))}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <button type="button" aria-label={"Quitar " + item.productName} disabled={editingLineItems.length <= 1}
+                        onClick={() => setFormData(previous => ({ ...previous, items: (previous.items ?? []).filter((_, lineIndex) => lineIndex !== index) }))}
+                        className="h-10 w-10 self-start rounded-lg text-rose-600 hover:bg-rose-50 disabled:opacity-30 dark:hover:bg-rose-900/20"><X size={17} /></button>
+                    </div>
+                  );
+                })}
+                <button type="button" onClick={() => {
+                  setFormData(previous => ({ ...previous, items: [...(previous.items ?? []), { productId: '', productName: '', quantity: 1, price: 0, discount: 0 }] }));
+                  setEditingLineIndex(editingLineItems.length);
+                }} className="flex min-h-10 items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 text-sm font-semibold text-[#365fad] dark:border-slate-600">
+                  <Plus size={16} /> Agregar producto
+                </button>
+              </section>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Producto</label>
+                  <ProductSearchSelect products={products} inventoryOwners={holdingsEnabled ? [] : inventoryOwners} value={formData.productId || ''} onChange={handleProductChange} placeholder="Buscar por nombre o categoría..." required />
+                </div>
+                {holdingsEnabled && formData.productId && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Titular preferido</label>
+                    <select value={preferredOwnerId} onChange={event => setPreferredOwnerId(event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                      <option value="">Automático{defaultInventoryOwnerId ? ' (predeterminado y prioridad)' : ''}</option>
+                      {selectedProductOwnerOptions.map(owner => {
+                        const holding = holdings.find(candidate => candidate.productId === formData.productId && candidate.inventoryOwnerId === owner.id && candidate.active);
+                        return <option key={owner.id} value={owner.id}>{owner.name} · Stock {holding?.stock ?? 0}</option>;
+                      })}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cantidad</label>
+                  <NumberField required min="1" integer aria-label="Cantidad" value={formData.quantity}
+                    onChange={event => setFormData(previous => ({ ...previous, quantity: Number(event.target.value) }))}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio unitario</label>
+                  <MoneyInput required min="0" aria-label="Precio unitario" value={formData.unitPrice}
+                    onChange={event => setFormData(previous => ({ ...previous, unitPrice: Number(event.target.value) }))}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                </div>
+              </>
+            )}
+            <div className="md:col-span-2"><h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">Importes y pago</h3></div>
 
             <AdjustmentInput
               label="Ajuste (Descuento/Recargo)"
@@ -1319,16 +1845,7 @@ export default function Sales() {
               />
             </React.Suspense>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cliente (Opcional)</label>
-              <input
-                type="text"
-                value={formData.client}
-                onChange={(e) => setFormData(prev => ({ ...prev, client: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
-                placeholder="Nombre del cliente"
-              />
-            </div>
+
 
             {holdingsEnabled && editingSale && selectedCustomer && (
               <div>
@@ -1486,30 +2003,7 @@ export default function Sales() {
               </div>
             )}
 
-            <div className="md:col-span-2 space-y-2 p-4 bg-[var(--surface-muted)] rounded-xl border border-[var(--line)]">
-              <div className="flex items-center justify-between text-sm text-[var(--ink-subtle)]">
-                <span>Subtotal</span>
-                <span>{formatCurrency(saleTotals.subtotal)}</span>
-              </div>
-              {saleTotals.adjustment !== 0 && (
-                <div className="flex items-center justify-between text-sm text-[var(--ink-subtle)]">
-                  <span>{saleTotals.adjustment < 0 ? 'Descuento' : 'Recargo'}</span>
-                  <span>{saleTotals.adjustment < 0 ? '−' : '+'}{formatCurrency(Math.abs(saleTotals.adjustment))}</span>
-                </div>
-              )}
-              {shippingEnabled && (
-                <div className="flex items-center justify-between text-sm text-[var(--ink-subtle)]">
-                  <span>Envío</span>
-                  <span>{formatCurrency(Number(formData.shippingAmount) || 0)}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between border-t border-[var(--line)] pt-2">
-                <span className="text-lg font-bold text-[var(--ink)]">Total a Cobrar:</span>
-                <span className="text-2xl font-black text-[var(--brand)]">
-                  {formatCurrency(saleTotalWithShipping)}
-                </span>
-              </div>
-            </div>
+
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Estado de Pago</label>
@@ -1567,21 +2061,20 @@ export default function Sales() {
             )}
           </div>
 
-          <div className="flex gap-3 pt-4">
-            <button 
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 px-4 py-2.5 bg-[#365fad] text-white font-semibold rounded-xl hover:bg-[#284b91] shadow-sm shadow-slate-900/10 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {saving ? 'Guardando...' : editingSale ? 'Guardar Cambios' : 'Registrar Venta'}
-            </button>
+          <div className="sticky bottom-0 z-10 -mx-4 mt-4 space-y-3 border-t border-[var(--line)] bg-white/95 p-4 backdrop-blur dark:bg-slate-900/95">
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="text-[var(--ink-subtle)]"><span>Subtotal productos</span><p className="mt-1 font-semibold text-[var(--ink)]">{formatCurrency(isMultiItemPosEdit ? multiItemSubtotal : saleTotals.subtotal)}</p></div>
+              <div className="text-[var(--ink-subtle)]"><span>Envío</span><p className="mt-1 font-semibold text-[var(--ink)]">{formatCurrency(shippingEnabled ? Number(formData.shippingAmount) || 0 : 0)}</p></div>
+              {multiItemDiscount > 0 && <div className="col-span-2 text-xs text-[var(--ink-muted)]">Descuentos por producto: {formatCurrency(multiItemDiscount)}</div>}
+              <div className="border-t border-[var(--line)] pt-2"><span className="text-xs font-bold uppercase text-[var(--ink-muted)]">Total de la venta</span><p className="mt-1 text-xl font-black text-[var(--brand)]">{formatCurrency(formTotalWithShipping)}</p></div>
+              <div className="border-t border-[var(--line)] pt-2"><span className="text-xs font-bold uppercase text-[var(--ink-muted)]">Saldo pendiente</span><p className="mt-1 text-xl font-black text-[var(--ink)]">{formatCurrency(formPendingBalance)}</p></div>
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-400">Cancelar</button>
+              <button type="submit" disabled={saving} className="flex-1 rounded-xl bg-[#365fad] px-4 py-2.5 font-semibold text-white shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-60">
+                {saving ? 'Guardando...' : paymentCorrectionOnly ? 'Guardar corrección' : editingSale ? 'Guardar cambios' : 'Registrar venta'}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>
