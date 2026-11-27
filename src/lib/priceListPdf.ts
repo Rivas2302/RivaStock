@@ -14,6 +14,9 @@ interface PriceListPdfOptions {
   fileNamePrefix?: string;
   availabilityByProductId?: Record<string, PriceListAvailability>;
   commercialNotice?: string | null;
+  includeInventoryOwner?: boolean;
+  includeInternalNotes?: boolean;
+  includeCode?: boolean;
 }
 
 interface CategoryGroup {
@@ -49,8 +52,8 @@ const getProductCode = (product: Product): string | null => {
   return null;
 };
 
-const getProductDescription = (product: Product): string => {
-  const parts = [product.description, product.notes]
+const getProductDescription = (product: Product, includeInternalNotes: boolean): string => {
+  const parts = includeInternalNotes ? [product.description, product.notes] : [product.description]
     .filter((value): value is string => Boolean(value?.trim()))
     .map((value) => value.trim());
 
@@ -92,6 +95,9 @@ export async function createPriceListPdf({
   fileNamePrefix = 'lista-precios',
   availabilityByProductId,
   commercialNotice,
+  includeInventoryOwner = true,
+  includeInternalNotes = true,
+  includeCode = true,
 }: PriceListPdfOptions): Promise<PriceListPdf> {
   const { jsPDF, autoTable } = await loadPdfRuntime();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -195,17 +201,21 @@ export async function createPriceListPdf({
         ? ['Producto', 'Descripción', 'Disponibilidad', 'Precio']
         : ['Producto', 'Descripción', 'Precio']],
       body: group.items.map((product) => {
-        const code = getProductCode(product);
-        const ownerName = getInventoryOwnerName(product, inventoryOwners);
+        const code = includeCode ? getProductCode(product) : null;
+        const ownerName = includeInventoryOwner ? getInventoryOwnerName(product, inventoryOwners) : '';
         const ownerLabel = ownerName ? ` — ${ownerName}` : '';
         const productLabel = `${product.name}${ownerLabel}`;
         const cells = [
           code ? `${productLabel}\nCódigo: ${code}` : productLabel,
-          getProductDescription(product),
+          getProductDescription(product, includeInternalNotes),
         ];
         if (showAvailability) {
           cells.push(
-            availabilityByProductId?.[product.id] === 'on_order' ? 'Por pedido' : 'Disponible',
+            availabilityByProductId?.[product.id] === 'on_order'
+              ? 'Bajo pedido'
+              : availabilityByProductId?.[product.id] === 'out_of_stock'
+                ? 'Agotado'
+                : 'Disponible',
           );
         }
         cells.push(formatPrice(product.salePrice, currencySymbol));

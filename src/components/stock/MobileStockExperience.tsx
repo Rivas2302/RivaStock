@@ -6,7 +6,6 @@ import BarcodeScannerOverlay from '../BarcodeScannerOverlay';
 import BottomSheet from '../mobile/BottomSheet';
 import type { InventoryHolding, InventoryOwner, Product } from '../../types';
 import { useAuth } from '../../AuthContext';
-import { useBusinessPlan } from '../../hooks/useBusinessPlan';
 import { getInventoryOwnerName } from '../../lib/inventoryOwners';
 import { getVisibleHoldingEconomics } from '../../lib/inventoryHoldings';
 import { normalizeBarcode } from '../../lib/barcode';
@@ -52,7 +51,7 @@ export type MobileStockAction =
   | { type: 'adjust-stock'; product: Product }
   | { type: 'toggle-catalog'; product: Product }
   | { type: 'print-barcode'; product: Product }
-  | { type: 'publish-facebook'; product: Product }
+  | { type: 'share-product'; product: Product }
   | { type: 'delete-product'; product: Product }
   | { type: 'create-product-from-scan'; barcode: string }
   | { type: 'edit-product'; product: Product }
@@ -106,7 +105,6 @@ export default function MobileStockExperience({
   operableInventoryOwnerIds,
 }: Props) {
   const { user } = useAuth();
-  const { plan } = useBusinessPlan();
   const location = useLocation();
   const navigate = useNavigate();
   const productId = new URLSearchParams(location.search).get('producto');
@@ -366,7 +364,6 @@ export default function MobileStockExperience({
         ownerStockSummary={ownerStockSummary}
         canWrite={canWrite}
         canDelete={canDelete}
-        canPublishFacebook={plan?.limits.modules.automation === true}
         catalogSaving={Boolean(product && catalogSavingIds.has(product.id))}
         catalogLink={catalogLink}
         onBack={() => {
@@ -375,14 +372,13 @@ export default function MobileStockExperience({
           else navigate('/stock', { replace: true });
         }}
         onSell={(item) => navigate(`/pos?producto=${encodeURIComponent(item.id)}`)}
-        onSendPhotos={(item) => navigate(`/fotos?producto=${encodeURIComponent(item.id)}`)}
+        onShareProduct={(item) => { void onAction({ type: 'share-product', product: item }); }}
         onEdit={(item) => navigate(`/stock?editar=${encodeURIComponent(item.id)}`)}
         onAdjustStock={openStockAdjustment}
         onToggleCatalog={(item) => { void onAction({ type: 'toggle-catalog', product: item }); }}
         onPrintBarcode={(item) => { void onAction({ type: 'print-barcode', product: item }); }}
         onOpenResellerList={() => { void onAction({ type: 'open-resellers' }); }}
         onOpenAllMovements={(item) => navigate(`/config?tab=owners&producto=${encodeURIComponent(item.id)}`)}
-        onPublishFacebook={(item) => { void onAction({ type: 'publish-facebook', product: item }); }}
         onDelete={deleteProduct}
       />
     </Suspense>;

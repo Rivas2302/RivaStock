@@ -9,10 +9,10 @@ const PRODUCT_ID = '12345678-1234-4abc-8def-1234567890ab';
 
 describe('catalog share links', () => {
   it('builds product and catalog URLs on the dedicated preview route', () => {
-    expect(getCatalogSharePath('rivatech-2')).toBe('/p/rivatech-2');
-    expect(getCatalogSharePath('riva tech', PRODUCT_ID)).toBe(`/p/riva%20tech/${PRODUCT_ID}`);
+    expect(getCatalogSharePath('rivatech-2')).toBe('/catalogo/rivatech-2');
+    expect(getCatalogSharePath('riva tech', PRODUCT_ID)).toBe(`/catalogo/riva%20tech/${PRODUCT_ID}`);
     expect(getCatalogShareUrl('https://rivastock.vercel.app', 'rivatech-2', PRODUCT_ID))
-      .toBe(`https://rivastock.vercel.app/p/rivatech-2/${PRODUCT_ID}`);
+      .toBe(`https://rivastock.vercel.app/catalogo/rivatech-2/${PRODUCT_ID}`);
   });
 });
 
@@ -38,7 +38,7 @@ describe('share metadata', () => {
 
   it('escapes metadata, emits Open Graph and Twitter tags, and redirects browsers to the catalog', () => {
     const html = renderShareHtml({
-      canonicalUrl: `https://rivastock.vercel.app/p/rivatech-2/${PRODUCT_ID}`,
+      canonicalUrl: `https://rivastock.vercel.app/catalogo/rivatech-2/${PRODUCT_ID}`,
       catalogUrl: `https://rivastock.vercel.app/catalogo/rivatech-2/${PRODUCT_ID}`,
       title: '<Cable> & Cía',
       description: 'RivaTech · $ 1.234',
@@ -160,7 +160,7 @@ describe('public catalog share handler', () => {
     expect(response.headers.get('cache-control')).toContain('s-maxage=300');
     expect(html).toContain('Cable &amp; cargador · RivaTech');
     expect(html).toContain('RivaTech · $ 1.234 · Carga rápida');
-    expect(html).toContain(`og:url" content="https://rivastock.vercel.app/p/rivatech-2/${PRODUCT_ID}`);
+    expect(html).toContain(`og:url" content="https://rivastock.vercel.app/catalogo/rivatech-2/${PRODUCT_ID}`);
     expect(html).toContain(`og:image" content="${SUPABASE_URL}/storage/v1/object/public/assets/item.webp`);
     expect(html).toContain('property="og:image:width" content="1200"');
     expect(html).toContain('property="og:image:height" content="630"');
@@ -260,7 +260,7 @@ describe('public catalog share handler', () => {
     const response = await handler(new Request(`https://project.supabase.co/functions/v1/share?slug=bazar-viejo&productId=${PRODUCT_ID}`, { headers: forwardedHost }));
 
     expect(response.status).toBe(308);
-    expect(response.headers.get('location')).toBe(`https://rivastock.vercel.app/p/bazar-lucia/${PRODUCT_ID}`);
+    expect(response.headers.get('location')).toBe(`https://rivastock.vercel.app/catalogo/bazar-lucia/${PRODUCT_ID}`);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
@@ -291,7 +291,7 @@ describe('public catalog share handler', () => {
     }));
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain('og:url" content="https://rivastock.vercel.app/p/rivatech-2"');
+    expect(await response.text()).toContain('og:url" content="https://rivastock.vercel.app/catalogo/rivatech-2"');
   });
 
   it('returns no catalog or product metadata for hidden products and missing businesses', async () => {

@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Copy,
   Edit3,
-  ExternalLink,
   Image as ImageIcon,
   MoreHorizontal,
   Package,
@@ -40,20 +39,24 @@ export interface MobileProductDetailProps {
   ownerStockSummary?: string;
   canWrite: boolean;
   canDelete: boolean;
-  canPublishFacebook: boolean;
   catalogSaving: boolean;
   catalogLink: string | null;
   onBack: () => void;
   onSell: (product: Product) => void;
-  onSendPhotos: (product: Product) => void;
+  onShareProduct: (product: Product) => void;
   onEdit: (product: Product) => void;
   onAdjustStock: (product: Product) => void;
   onToggleCatalog: (product: Product) => void;
   onPrintBarcode: (product: Product) => void;
   onOpenResellerList: (product: Product) => void;
   onOpenAllMovements: (product: Product) => void;
-  onPublishFacebook: (product: Product) => void;
   onDelete: (product: Product) => Promise<boolean>;
+}
+
+function isAvailableOnOrder(product: Product): boolean {
+  const fields = product.customFields ?? {};
+  const value = String(fields.availability ?? fields.availabilityStatus ?? fields.disponibilidad ?? '').toLowerCase();
+  return fields.onOrder === true || value.includes('pedido') || value.includes('order');
 }
 
 function marginPercent(salePrice: number, purchasePrice: number): number | null {
@@ -68,19 +71,17 @@ export default function MobileProductDetail({
   ownerStockSummary,
   canWrite,
   canDelete,
-  canPublishFacebook,
   catalogSaving,
   catalogLink,
   onBack,
   onSell,
-  onSendPhotos,
+  onShareProduct,
   onEdit,
   onAdjustStock,
   onToggleCatalog,
   onPrintBarcode,
   onOpenResellerList,
   onOpenAllMovements,
-  onPublishFacebook,
   onDelete,
 }: MobileProductDetailProps) {
   useMobileAppChrome({ hideHeader: true, hideBottomNav: true });
@@ -129,6 +130,7 @@ export default function MobileProductDetail({
     ? `${margin[0]?.toFixed(1) ?? '—'}% – ${margin[1]?.toFixed(1) ?? '—'}%`
     : margin[0] === null || margin[0] === undefined ? '—' : `${margin[0].toFixed(1)}%`;
   const shareUrl = product?.showInCatalog ? catalogLink : null;
+  const availableOnOrder = Boolean(product && isAvailableOnOrder(product));
 
   const copyCatalogLink = async () => {
     if (!shareUrl) return;
@@ -245,7 +247,9 @@ export default function MobileProductDetail({
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-subtle)]">Stock</p>
             <p className="mt-1 text-2xl font-bold">{currentEconomics.stock} unidades</p>
           </div>
-          <StockBadge stock={currentEconomics.stock} minStock={currentEconomics.minStock} />
+          {currentEconomics.stock <= 0 && availableOnOrder
+            ? <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">Bajo pedido</span>
+            : <StockBadge stock={currentEconomics.stock} minStock={currentEconomics.minStock} />}
         </div>
         {ownerStockSummary && <p className="mt-2 text-sm text-[var(--ink-subtle)]">{ownerStockSummary}</p>}
         {canWrite && !product.catalogOnly && <button type="button" onClick={() => onAdjustStock(product)} className="mt-4 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 text-sm font-bold">Ajustar stock</button>}
@@ -253,7 +257,7 @@ export default function MobileProductDetail({
 
       <div className="grid grid-cols-2 gap-2">
         <button type="button" onClick={() => onSell(product)} disabled={currentEconomics.stock <= 0} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-[var(--action-bg)] px-3 text-sm font-bold text-[var(--action-ink)] disabled:cursor-not-allowed disabled:opacity-50"><ShoppingBag size={19} aria-hidden="true" />{currentEconomics.stock <= 0 ? 'Sin stock' : 'Vender'}</button>
-        <button type="button" onClick={() => onSendPhotos(product)} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl border border-[var(--line)] mobile-stock-surface px-3 text-sm font-bold"><Share2 size={19} aria-hidden="true" />Enviar fotos</button>
+        <button type="button" onClick={() => onShareProduct(product)} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl border border-[var(--line)] mobile-stock-surface px-3 text-sm font-bold"><Share2 size={19} aria-hidden="true" />Compartir producto</button>
         {canWrite && <button type="button" onClick={() => onEdit(product)} className="col-span-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] mobile-stock-surface px-3 text-sm font-bold"><Edit3 size={18} aria-hidden="true" />Editar</button>}
       </div>
 
@@ -297,7 +301,6 @@ export default function MobileProductDetail({
           <button type="button" onClick={() => void copyCatalogLink()} className="flex min-h-12 w-full items-center gap-3 rounded-xl px-2 text-left text-sm font-semibold hover:bg-[var(--surface-muted)]"><Copy size={18} aria-hidden="true" />Copiar enlace del catálogo</button>
           {typeof navigator.share === 'function' && <button type="button" onClick={() => void shareCatalogLink()} className="flex min-h-12 w-full items-center gap-3 rounded-xl px-2 text-left text-sm font-semibold hover:bg-[var(--surface-muted)]"><Share2 size={18} aria-hidden="true" />Compartir</button>}
         </>}
-        {canPublishFacebook && <button type="button" onClick={() => { setMenuOpen(false); onPublishFacebook(product); }} className="flex min-h-12 w-full items-center gap-3 rounded-xl px-2 text-left text-sm font-semibold hover:bg-[var(--surface-muted)]"><ExternalLink size={18} aria-hidden="true" />Publicar en Facebook</button>}
         {canDelete && <button type="button" onClick={() => { setMenuOpen(false); setDeleteOpen(true); }} className="flex min-h-12 w-full items-center gap-3 rounded-xl px-2 text-left text-sm font-semibold text-[var(--danger-ink)] hover:bg-[var(--danger-surface)]"><Trash2 size={18} aria-hidden="true" />Eliminar producto</button>}
       </nav>
     </BottomSheet>}

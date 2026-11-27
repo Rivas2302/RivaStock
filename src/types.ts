@@ -136,7 +136,7 @@ export interface Product {
 
 export type PriceListKind = 'reseller';
 export type PriceListPricingMode = 'default' | 'discount' | 'fixed';
-export type PriceListAvailability = 'in_stock' | 'on_order';
+export type PriceListAvailability = 'in_stock' | 'on_order' | 'out_of_stock';
 export type MinimumOrderRule = 'none' | 'amount' | 'quantity' | 'both';
 export type CatalogChannel = 'retail' | 'reseller';
 

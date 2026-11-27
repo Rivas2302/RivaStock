@@ -12,7 +12,7 @@ export interface MobileStockActionHandlers {
   adjustStock: (product: Product) => void;
   toggleCatalog: (product: Product) => void;
   printBarcode: (product: Product) => void;
-  publishFacebook: (product: Product) => void;
+  shareProduct: (product: Product) => void;
   deleteProduct: (product: Product) => Promise<boolean>;
   createProductFromScan: (barcode: string) => void;
   editProduct: (product: Product) => void;
@@ -34,7 +34,7 @@ export function dispatchMobileStockAction(
     case 'adjust-stock': handlers.adjustStock(action.product); break;
     case 'toggle-catalog': handlers.toggleCatalog(action.product); break;
     case 'print-barcode': handlers.printBarcode(action.product); break;
-    case 'publish-facebook': handlers.publishFacebook(action.product); break;
+    case 'share-product': handlers.shareProduct(action.product); break;
     case 'delete-product': return handlers.deleteProduct(action.product);
     case 'create-product-from-scan': handlers.createProductFromScan(action.barcode); break;
     case 'edit-product': handlers.editProduct(action.product); break;

@@ -41,7 +41,7 @@ type Handlers = [
   saveStockAdjustment: (input: AdjustProductStockInput) => Promise<unknown>,
   toggleCatalog: MobileStockActionHandlers['toggleCatalog'],
   printBarcode: MobileStockActionHandlers['printBarcode'],
-  publishFacebook: MobileStockActionHandlers['publishFacebook'],
+  shareProduct: MobileStockActionHandlers['shareProduct'],
   deleteProduct: MobileStockActionHandlers['deleteProduct'],
   createProductFromScan: MobileStockActionHandlers['createProductFromScan'],
   editProduct: MobileStockActionHandlers['editProduct'],
@@ -62,13 +62,13 @@ export default function MobileStockEntry({ data, handlers }: Props) {
   const [
     onToggleSelect, startCodeSelection, cancelCodeSelection, generateCodes, addProduct,
     openResellers, openPriceList, downloadPriceList, adjustStock, saveStockAdjustment,
-    toggleCatalog, printBarcode, publishFacebook, deleteProduct, createProductFromScan,
+    toggleCatalog, printBarcode, shareProduct, deleteProduct, createProductFromScan,
     editProduct, retryImageCleanup,
   ] = handlers;
   const actionHandlers: MobileStockActionHandlers = {
     startCodeSelection, cancelCodeSelection, generateCodes, addProduct, openResellers,
     openPriceList, downloadPriceList, adjustStock, toggleCatalog,
-    printBarcode, publishFacebook, deleteProduct, createProductFromScan, editProduct,
+    printBarcode, shareProduct, deleteProduct, createProductFromScan, editProduct,
     retryImageCleanup,
   };
   useEffect(() => {

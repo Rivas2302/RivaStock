@@ -1,8 +1,8 @@
 export function getCatalogSharePath(slug: string, productId?: string | null): string {
   const encodedSlug = encodeURIComponent(slug);
   return productId
-    ? `/p/${encodedSlug}/${encodeURIComponent(productId)}`
-    : `/p/${encodedSlug}`;
+    ? `/catalogo/${encodedSlug}/${encodeURIComponent(productId)}`
+    : `/catalogo/${encodedSlug}`;
 }
 
 export function getCatalogShareUrl(origin: string, slug: string, productId?: string | null): string {

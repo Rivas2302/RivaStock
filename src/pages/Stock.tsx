@@ -1,5 +1,5 @@
 import { lazyWithRetry } from '../lib/lazyWithRetry';
-import React, { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import DeferredMount from '../components/DeferredMount';
 import NumberField from '../components/NumberField';
 import MoneyInput from '../components/MoneyInput';
@@ -32,6 +32,7 @@ import { beginSubmission, endSubmission } from '../lib/submissionGuard';
 import { failedStorageCleanupPaths } from '../lib/storageCleanup';
 import { getCatalogShareUrl } from '../lib/catalogShare';
 import { createPriceListPdf } from '../lib/priceListPdf';
+import { createCatalogPhotoPdf, createStockInventoryWorkbook, type StockInventoryExportRow } from '../lib/stockExports';
 import { getHoldingRestockRecommendations, getRestockRecommendations } from '../lib/stockIntelligence';
 import { getRecentRestockSales } from '../lib/recentSales';
 import { showToast } from '../lib/toast';
@@ -50,10 +51,7 @@ import {
   Trash2,
   Eye,
   EyeOff,
-  Check,
-  X,
   ChevronDown,
-  Share2,
   Barcode,
   Printer,
   Download,
@@ -72,8 +70,8 @@ import {
 } from '../components/stock/ProductEditorFields';
 const BarcodePrintModal = lazyWithRetry('src/components/BarcodePrintModal.tsx', () => import('../components/BarcodePrintModal'));
 const BarcodeScannerOverlay = lazyWithRetry('src/components/BarcodeScannerOverlay.tsx', () => import('../components/BarcodeScannerOverlay'));
-const FacebookPublicationModal = lazyWithRetry('src/components/FacebookPublicationModal.tsx', () => import('../components/FacebookPublicationModal'));
 const ResellerPriceListModal = lazyWithRetry('src/components/ResellerPriceListModal.tsx', () => import('../components/ResellerPriceListModal'));
+const StockProductShareModal = lazyWithRetry('src/components/stock/StockProductShareModal.tsx', () => import('../components/stock/StockProductShareModal'));
 const MobileStockEntry = lazyWithRetry('src/components/stock/MobileStockEntry.tsx', () => import('../components/stock/MobileStockEntry'));
 const MobileProductForm = lazyWithRetry('src/components/stock/MobileProductForm.tsx', () => import('../components/stock/MobileProductForm'));
 const ProductDeleteConfirmation = lazyWithRetry('src/components/stock/ProductDeleteConfirmation.tsx', () => import('../components/stock/ProductDeleteConfirmation'));
@@ -102,13 +100,30 @@ function persistableSupplierContext(context: SupplierProductCreationContext | nu
   };
 }
 
+function getProductSearchCode(product: Product): string {
+  const fields = product.customFields ?? {};
+  const codeEntry = Object.entries(fields).find(([key, value]) => (
+    /sku|c[oó]digo|code|barcode/i.test(key) && value !== null && value !== undefined && String(value).trim()
+  ));
+  return [product.barcode ?? '', codeEntry ? String(codeEntry[1]) : ''].join(' ');
+}
+
+function hasProductCode(product: Product): boolean {
+  return Boolean(getProductSearchCode(product).trim());
+}
+
+function isProductOnOrder(product: Product): boolean {
+  const fields = product.customFields ?? {};
+  const value = String(fields.availability ?? fields.availabilityStatus ?? fields.disponibilidad ?? '').toLowerCase();
+  return fields.onOrder === true || value.includes('pedido') || value.includes('order');
+}
+
 export default function Stock() {
   const {
     user, isOwner, refetchToken, holdingsEnabled, inventoryAccessError,
     allowedInventoryOwnerIds, operableInventoryOwnerIds,
   } = useAuth();
   const canWrite = usePermission('stock', 'write');
-  const [facebookProduct, setFacebookProduct] = useState<Product | null>(null);
   const canDelete = usePermission('stock', 'delete');
   const location = useLocation();
   const navigate = useNavigate();
@@ -131,8 +146,16 @@ export default function Stock() {
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState({
+    minPrice: '', maxPrice: '', minStock: '', maxStock: '', minMargin: '', maxMargin: '', catalog: 'all', quality: 'all',
+  });
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'price' | 'photos' | 'excel'>('price');
+  const [exportScope, setExportScope] = useState<'filtered' | 'selected'>('filtered');
+  const [shareProduct, setShareProduct] = useState<Product | null>(null);
   const [ownerFilter, setOwnerFilter] = useState('all');
   const deferredSearch = useDeferredValue(search);
   const { owners: inventoryOwners, primaryOwner } = useInventoryOwners(
@@ -382,6 +405,7 @@ export default function Stock() {
       const pdf = await createPriceListPdf({
         products: priceListProducts, categories, businessName: user.businessName,
         currencySymbol: user.currencySymbol, inventoryOwners,
+        includeInventoryOwner: false, includeInternalNotes: false, includeCode: false,
       });
       const url = URL.createObjectURL(pdf.blob);
       if (action === 'preview') {
@@ -406,6 +430,77 @@ export default function Stock() {
       previewWindow?.close();
       console.error('[Stock] price list PDF error:', error);
       showToast('No se pudo generar la lista de precios.', 'error');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  const handleStockExport = async () => {
+    if (isExportingPdf || !user) return;
+    if (exportProducts.length === 0) {
+      showToast(exportScope === 'selected' ? 'Seleccioná al menos un resultado visible para exportar.' : 'No hay productos para exportar.', 'info');
+      return;
+    }
+    setIsExportingPdf(true);
+    try {
+      let blob: Blob;
+      let fileName: string;
+      if (exportFormat === 'excel') {
+        const result = await createStockInventoryWorkbook(stockExportRows, user.businessName, user.currencySymbol, activeFilterLabels.join(' · ') || 'Sin filtros adicionales');
+        blob = result.blob;
+        fileName = result.fileName;
+      } else if (exportFormat === 'photos') {
+        const publicStock = new Map(exportProducts.map((product) => [
+          product.id,
+          holdingsEnabled
+            ? getVisibleProductStock(product.id, holdingsByProduct.get(product.id) ?? [])
+            : product.stock,
+        ]));
+        const result = await createCatalogPhotoPdf({
+          products: exportProducts,
+          categories,
+          businessName: user.businessName,
+          currencySymbol: user.currencySymbol,
+          catalogSlug: user.catalogSlug,
+          origin: window.location.origin,
+          stockByProductId: publicStock,
+        });
+        blob = result.blob;
+        fileName = result.fileName;
+      } else {
+        const availabilityByProductId = Object.fromEntries(exportProducts.map((product) => {
+          const stock = holdingsEnabled
+            ? getVisibleProductStock(product.id, holdingsByProduct.get(product.id) ?? [])
+            : product.stock;
+          return [product.id, stock > 0 ? 'in_stock' : isProductOnOrder(product) ? 'on_order' : 'out_of_stock'];
+        })) as Record<string, 'in_stock' | 'on_order' | 'out_of_stock'>;
+        const result = await createPriceListPdf({
+          products: exportProducts,
+          categories,
+          businessName: user.businessName,
+          currencySymbol: user.currencySymbol,
+          inventoryOwners,
+          availabilityByProductId,
+          includeInventoryOwner: false,
+          includeInternalNotes: false,
+          includeCode: false,
+        });
+        blob = result.blob;
+        fileName = result.fileName;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      setExportModalOpen(false);
+      showToast('Exportación descargada: ' + fileName, 'success');
+    } catch (error) {
+      console.error('[Stock] export error:', error);
+      showToast('No se pudo generar la exportación. Volvé a intentarlo.', 'error');
     } finally {
       setIsExportingPdf(false);
     }
@@ -700,28 +795,123 @@ export default function Stock() {
     [restockRecommendations],
   );
 
-  const filteredProducts = useMemo(() => {
-    return ownerVisibleProducts.filter((p) => {
-    const normalizedSearch = deferredSearch.toLowerCase();
-    const matchesSearch = p.name.toLowerCase().includes(normalizedSearch)
-      || getInventoryOwnerName(p, inventoryOwners).toLowerCase().includes(normalizedSearch);
-    const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
-    const matchesOwner = holdingsEnabled || ownerFilter === 'all' || p.inventoryOwnerId === ownerFilter;
-    const visibleStock = holdingsEnabled
-      ? getVisibleHoldingEconomics(p, visibleHoldingsByProduct.get(p.id) ?? [], 'all').stock
-      : p.stock;
-    const matchesStatus = statusFilter === 'all' ||
-      (statusFilter === 'disponible' && visibleStock > 0) ||
-      (statusFilter === 'no-disponible' && visibleStock === 0) ||
-      (statusFilter === 'reponer' && restockProductIds.has(p.id));
-    return matchesSearch && matchesCategory && matchesOwner && matchesStatus;
-    });
-  }, [categoryFilter, deferredSearch, holdingsEnabled, inventoryOwners, ownerFilter, ownerVisibleProducts, restockProductIds, statusFilter, visibleHoldingsByProduct]);
+  const getScopedStock = useCallback((product: Product) => holdingsEnabled
+    ? getVisibleHoldingEconomics(product, visibleHoldingsByProduct.get(product.id) ?? [], 'all').stock
+    : product.stock, [holdingsEnabled, visibleHoldingsByProduct]);
+  const getScopedCost = useCallback((product: Product) => holdingsEnabled
+    ? getVisibleHoldingEconomics(product, visibleHoldingsByProduct.get(product.id) ?? [], 'all').purchaseCost
+    : (product.purchasePrice > 0 ? product.purchasePrice : null), [holdingsEnabled, visibleHoldingsByProduct]);
 
-  const selectableIds = useMemo(
-    () => filteredProducts.filter((p) => !normalizeBarcode(p.barcode ?? '')).map((p) => p.id),
-    [filteredProducts],
+  const filteredProducts = useMemo(() => {
+    const normalizedSearch = deferredSearch.trim().toLocaleLowerCase('es-AR');
+    const minPrice = advancedFilters.minPrice === '' ? null : Number(advancedFilters.minPrice);
+    const maxPrice = advancedFilters.maxPrice === '' ? null : Number(advancedFilters.maxPrice);
+    const minStock = advancedFilters.minStock === '' ? null : Number(advancedFilters.minStock);
+    const maxStock = advancedFilters.maxStock === '' ? null : Number(advancedFilters.maxStock);
+    const minMargin = advancedFilters.minMargin === '' ? null : Number(advancedFilters.minMargin);
+    const maxMargin = advancedFilters.maxMargin === '' ? null : Number(advancedFilters.maxMargin);
+    return ownerVisibleProducts.filter((product) => {
+      const searchFields = [
+        product.name,
+        product.category,
+        product.barcode,
+        getProductSearchCode(product),
+        getInventoryOwnerName(product, inventoryOwners),
+        ...Object.entries(product.customFields ?? {}).flatMap(([key, value]) => [key, value === null ? '' : String(value)]),
+      ].join(' ').toLocaleLowerCase('es-AR');
+      const matchesSearch = !normalizedSearch || searchFields.includes(normalizedSearch);
+      const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(product.category);
+      const matchesOwner = holdingsEnabled || ownerFilter === 'all' || product.inventoryOwnerId === ownerFilter;
+      const visibleStock = getScopedStock(product);
+      const cost = getScopedCost(product);
+      const margin = cost !== null && product.salePrice > 0 ? ((product.salePrice - cost) / product.salePrice) * 100 : null;
+      const matchesStatus = statusFilter === 'all'
+        || (statusFilter === 'disponible' && visibleStock > 0)
+        || (statusFilter === 'no-disponible' && visibleStock === 0 && !isProductOnOrder(product))
+        || (statusFilter === 'bajo-pedido' && visibleStock === 0 && isProductOnOrder(product))
+        || (statusFilter === 'reponer' && restockProductIds.has(product.id))
+        || (statusFilter === 'listo-compartir' && (visibleStock > 0 || isProductOnOrder(product)));
+      const matchesPrice = (minPrice === null || product.salePrice >= minPrice) && (maxPrice === null || product.salePrice <= maxPrice);
+      const matchesStock = (minStock === null || visibleStock >= minStock) && (maxStock === null || visibleStock <= maxStock);
+      const matchesMargin = (minMargin === null || (margin !== null && margin >= minMargin))
+        && (maxMargin === null || (margin !== null && margin <= maxMargin));
+      const matchesCatalog = advancedFilters.catalog === 'all'
+        || (advancedFilters.catalog === 'visible' && product.showInCatalog)
+        || (advancedFilters.catalog === 'hidden' && !product.showInCatalog);
+      const code = hasProductCode(product);
+      const hasPhoto = Boolean(product.imageUrl || product.images?.some(Boolean));
+      const hasCost = cost !== null && cost > 0;
+      const quality = advancedFilters.quality;
+      const matchesQuality = quality === 'all'
+        || (quality === 'sin-foto' && !hasPhoto)
+        || (quality === 'sin-codigo' && !code)
+        || (quality === 'sin-costo' && !hasCost)
+        || (quality === 'incompleta' && (!hasPhoto || !code || !hasCost))
+        || (quality === 'completa' && hasPhoto && code && hasCost)
+        || (quality === 'compartible' && hasPhoto && product.showInCatalog);
+      return matchesSearch && matchesCategory && matchesOwner && matchesStatus && matchesPrice && matchesStock
+        && matchesMargin && matchesCatalog && matchesQuality;
+    });
+  }, [advancedFilters, deferredSearch, getScopedCost, getScopedStock, holdingsEnabled, inventoryOwners, ownerFilter, ownerVisibleProducts, restockProductIds, selectedCategories, statusFilter]);
+
+  const activeFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (search.trim()) labels.push('Búsqueda: ' + search.trim());
+    if (ownerFilter !== 'all') labels.push('Titular: ' + (inventoryOwnersById.get(ownerFilter)?.name ?? 'Seleccionado'));
+    for (const category of selectedCategories) labels.push('Categoría: ' + category);
+    if (statusFilter !== 'all') labels.push('Estado: ' + (({
+      disponible: 'Disponible', 'no-disponible': 'Agotado', 'bajo-pedido': 'Bajo pedido',
+      reponer: 'Para reponer', 'listo-compartir': 'Listo para compartir',
+    } as Record<string, string>)[statusFilter] ?? statusFilter));
+    if (advancedFilters.minPrice) labels.push('Desde ' + formatCurrency(Number(advancedFilters.minPrice)));
+    if (advancedFilters.maxPrice) labels.push('Hasta ' + formatCurrency(Number(advancedFilters.maxPrice)));
+    if (advancedFilters.minStock) labels.push('Stock desde ' + advancedFilters.minStock);
+    if (advancedFilters.maxStock) labels.push('Stock hasta ' + advancedFilters.maxStock);
+    if (advancedFilters.minMargin) labels.push('Margen desde ' + advancedFilters.minMargin + '%');
+    if (advancedFilters.maxMargin) labels.push('Margen hasta ' + advancedFilters.maxMargin + '%');
+    if (advancedFilters.catalog !== 'all') labels.push(advancedFilters.catalog === 'visible' ? 'Visible en catálogo' : 'Oculto del catálogo');
+    if (advancedFilters.quality !== 'all') labels.push('Ficha: ' + advancedFilters.quality.replaceAll('-', ' '));
+    return labels;
+  }, [advancedFilters, inventoryOwnersById, ownerFilter, search, selectedCategories, statusFilter]);
+  const clearStockFilters = () => {
+    setSearch('');
+    setOwnerFilter('all');
+    setSelectedCategories([]);
+    setStatusFilter('all');
+    setAdvancedFilters({ minPrice: '', maxPrice: '', minStock: '', maxStock: '', minMargin: '', maxMargin: '', catalog: 'all', quality: 'all' });
+  };
+
+  const selectableIds = useMemo(() => filteredProducts.map((product) => product.id), [filteredProducts]);
+  const selectedFilteredProducts = useMemo(
+    () => filteredProducts.filter((product) => selectedIds.has(product.id)),
+    [filteredProducts, selectedIds],
   );
+  const exportProducts = exportScope === 'selected' ? selectedFilteredProducts : filteredProducts;
+  const stockExportRows = useMemo<StockInventoryExportRow[]>(() => exportProducts.flatMap((product) => {
+    if (holdingsEnabled) {
+      const productHoldings = visibleHoldingsByProduct.get(product.id) ?? [];
+      if (productHoldings.length > 0) {
+        return productHoldings.map((holding) => {
+          const purchaseCost = holding.purchaseCost > 0 ? holding.purchaseCost : null;
+          return {
+            product,
+            ownerName: inventoryOwnersById.get(holding.inventoryOwnerId)?.name ?? 'Titular',
+            stock: holding.stock,
+            purchaseCost,
+            marginPercent: purchaseCost !== null && product.salePrice > 0 ? ((product.salePrice - purchaseCost) / product.salePrice) * 100 : null,
+          };
+        });
+      }
+    }
+    const purchaseCost = getScopedCost(product);
+    return [{
+      product,
+      ownerName: getInventoryOwnerName(product, inventoryOwners),
+      stock: getScopedStock(product),
+      purchaseCost,
+      marginPercent: purchaseCost !== null && product.salePrice > 0 ? ((product.salePrice - purchaseCost) / product.salePrice) * 100 : null,
+    }];
+  }), [exportProducts, getScopedCost, getScopedStock, holdingsEnabled, inventoryOwners, inventoryOwnersById, visibleHoldingsByProduct]);
   const pagination = usePagination(filteredProducts);
   const allSelectableSelected = selectableIds.length > 0 &&
     selectableIds.every((id) => selectedIds.has(id));
@@ -799,7 +989,7 @@ export default function Stock() {
               navigate({ pathname: location.pathname, search: `?${params.toString()}` });
             }, saveMobileStockAdjustment, (product) => { void toggleCatalogVisibility(product); },
             (product) => { if (product.barcode) setPrintProduct(product); else void generateAndPrint(product); },
-            (product) => setFacebookProduct(product), deleteProduct,
+            (product) => setShareProduct(product), deleteProduct,
             (barcode) => openProductEditor(undefined, barcode), (product) => openProductEditor(product),
             () => { void retryImageCleanup(); },
           ]}
@@ -846,26 +1036,9 @@ export default function Stock() {
           <p className="text-slate-500 dark:text-slate-400">Controla tus productos y existencias</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <button
-            type="button"
-            onClick={() => handlePriceList('download')}
-            disabled={isExportingPdf || priceListProducts.length === 0}
-            title={
-              priceListProducts.length === 0
-                ? 'No hay productos con stock disponible para listar'
-                : isExportingPdf
-                  ? 'Generando PDF...'
-                  : 'Descargar lista de precios en PDF'
-            }
-            className={cn(
-              'px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all',
-              isExportingPdf || priceListProducts.length === 0
-                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                : 'bg-[#365fad] hover:bg-[#284b91] text-white shadow-sm shadow-slate-900/10'
-            )}
-          >
+          <button type="button" onClick={() => { setExportScope(selectedFilteredProducts.length ? 'selected' : 'filtered'); setExportModalOpen(true); }} disabled={!filteredProducts.length || isExportingPdf} title={!filteredProducts.length ? 'No hay resultados para exportar' : 'Exportar resultados filtrados o seleccionados'} className="inline-flex items-center gap-2 rounded-xl bg-[#365fad] px-4 py-2.5 font-semibold text-white shadow-sm shadow-slate-900/10 transition-colors hover:bg-[#284b91] disabled:cursor-not-allowed disabled:opacity-50">
             {isExportingPdf ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-            {isExportingPdf ? 'Generando...' : 'Descargar PDF'}
+            {isExportingPdf ? 'Preparando…' : 'Exportar'}
           </button>
           <button 
             onClick={() => openProductEditor()}
@@ -984,6 +1157,67 @@ export default function Stock() {
       {!isResellersRoute && <>
 
       <Modal
+        isOpen={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        title="Exportar productos"
+        className="max-w-5xl"
+      >
+        <div className="space-y-4 overflow-y-auto p-4 sm:p-6">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex cursor-pointer gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+              <input type="radio" name="stock-export-scope" checked={exportScope === 'filtered'} onChange={() => setExportScope('filtered')} />
+              <span><strong className="block text-sm text-slate-900 dark:text-white">Todos los resultados filtrados</strong><span className="text-xs text-slate-500">{filteredProducts.length} productos</span></span>
+            </label>
+            <label className="flex cursor-pointer gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+              <input type="radio" name="stock-export-scope" checked={exportScope === 'selected'} onChange={() => setExportScope('selected')} disabled={selectedFilteredProducts.length === 0} />
+              <span><strong className="block text-sm text-slate-900 dark:text-white">Solo los seleccionados</strong><span className="text-xs text-slate-500">{selectedFilteredProducts.length} seleccionados dentro del filtro actual</span></span>
+            </label>
+          </div>
+
+          <div className="grid gap-2 md:grid-cols-3">
+            {[
+              ['price', 'Lista de precios', 'PDF compacto por categoría'],
+              ['photos', 'Catálogo con fotos', 'PDF para compartir con clientes'],
+              ['excel', 'Excel de inventario', 'Costos, titulares, margen y unidades'],
+            ].map(([format, title, detail]) => (
+              <button key={format} type="button" onClick={() => setExportFormat(format as 'price' | 'photos' | 'excel')} className={cn("rounded-xl border p-3 text-left transition-colors", exportFormat === format ? "border-[#365fad] bg-indigo-50 ring-2 ring-[#365fad]/20 dark:bg-indigo-950/30" : "border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800")}>
+                <span className="block font-semibold text-slate-900 dark:text-white">{title}</span>
+                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{detail}</span>
+              </button>
+            ))}
+          </div>
+
+          <section className="rounded-xl border border-slate-200 dark:border-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-700">
+              <div><h3 className="text-sm font-semibold text-slate-900 dark:text-white">Vista previa del contenido</h3><p className="text-xs text-slate-500">{exportScope === 'selected' ? selectedFilteredProducts.length : filteredProducts.length} productos · respeta búsqueda y filtros activos</p></div>
+              <span className="text-xs text-slate-500">{activeFilterLabels.length ? activeFilterLabels.join(' · ') : 'Sin filtros adicionales'}</span>
+            </div>
+            <div className="max-h-72 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+              {exportProducts.slice(0, 12).map((product) => (
+                <div key={product.id} className="flex items-center gap-3 px-3 py-2.5">
+                  {product.imageUrl || product.images?.[0]
+                    ? <img src={product.imageUrl || product.images?.[0]} alt="" className="h-11 w-11 rounded-lg bg-slate-100 object-contain dark:bg-slate-800" />
+                    : <div className="h-11 w-11 rounded-lg bg-slate-100 dark:bg-slate-800" />}
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900 dark:text-white">{product.name}</p><p className="text-xs text-slate-500">{product.category} · {getScopedStock(product) > 0 ? 'Disponible' : isProductOnOrder(product) ? 'Bajo pedido' : 'Agotado'}</p></div>
+                  <span className="shrink-0 text-sm font-semibold text-slate-800 dark:text-slate-200">{formatCurrency(roundPrice(product.salePrice))}</span>
+                </div>
+              ))}
+              {exportProducts.length > 12 && <p className="px-3 py-2 text-xs text-slate-500">Y {exportProducts.length - 12} productos más en la exportación.</p>}
+              {exportProducts.length === 0 && <p className="px-3 py-8 text-center text-sm text-slate-500">No hay productos en este alcance.</p>}
+            </div>
+          </section>
+
+          <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
+            <button type="button" onClick={() => setExportModalOpen(false)} className="rounded-xl border border-slate-300 px-4 py-2.5 font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">Cancelar</button>
+            <button type="button" onClick={() => void handleStockExport()} disabled={isExportingPdf || !exportProducts.length} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#365fad] px-4 py-2.5 font-semibold text-white hover:bg-[#284b91] disabled:opacity-50">
+              {isExportingPdf ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />}
+              {isExportingPdf ? 'Preparando…' : 'Descargar exportación'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         isOpen={priceListPreview !== null}
         onClose={() => setPriceListPreview(null)}
         title="Vista previa de lista de precios"
@@ -1089,60 +1323,95 @@ export default function Stock() {
       )}
 
       {/* Filters */}
-      <div className="hidden grid-cols-1 gap-4 md:grid-cols-5 lg:grid">
-        <div className="relative md:col-span-2">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input 
-            type="text"
-            placeholder="Buscar por nombre..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white"
-          />
+      <section className="hidden space-y-3 lg:block">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="relative xl:col-span-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input type="search" placeholder="Nombre, modelo, SKU o código de barras" value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 outline-none transition-all focus:ring-2 focus:ring-[#365fad] dark:border-slate-800 dark:bg-slate-900 dark:text-white" />
+          </label>
+          <div className="relative">
+            <Filter className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 dark:border-slate-800 dark:bg-slate-900 dark:text-white">
+              <option value="all">Todos los titulares</option>
+              {inventoryOwners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name}{owner.archivedAt ? ' (archivado)' : ''}</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          </div>
+          <details className="relative">
+            <summary className="flex cursor-pointer list-none items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-800 dark:bg-slate-900 dark:text-white">
+              <span className="truncate">{selectedCategories.length ? selectedCategories.length + ' categorías' : 'Todas las categorías'}</span>
+              <ChevronDown size={16} className="shrink-0 text-slate-400" />
+            </summary>
+            <div className="absolute left-0 right-0 z-30 mt-1 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+              <button type="button" onClick={() => setSelectedCategories([])} className="w-full rounded-lg px-2 py-2 text-left text-sm font-semibold text-[#365fad] hover:bg-slate-50 dark:hover:bg-slate-800">Todas las categorías</button>
+              {categories.map((category) => (
+                <label key={category.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800">
+                  <input type="checkbox" checked={selectedCategories.includes(category.name)} onChange={() => setSelectedCategories((current) => current.includes(category.name) ? current.filter((name) => name !== category.name) : [...current, category.name])} />
+                  {category.name}
+                </label>
+              ))}
+            </div>
+          </details>
+          <div className="relative">
+            <Filter className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 dark:border-slate-800 dark:bg-slate-900 dark:text-white">
+              <option value="all">Todos los estados</option>
+              <option value="disponible">Disponible</option>
+              <option value="bajo-pedido">Bajo pedido</option>
+              <option value="no-disponible">Agotado</option>
+              <option value="reponer">Para reponer</option>
+              <option value="listo-compartir">Listo para compartir</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          </div>
         </div>
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <select
-            value={ownerFilter}
-            onChange={(event) => setOwnerFilter(event.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white appearance-none"
-          >
-            <option value="all">Todos los titulares</option>
-            {inventoryOwners.map((owner) => (
-              <option key={owner.id} value={owner.id}>
-                {owner.name}{owner.archivedAt ? ' (archivado)' : ''}
-              </option>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => { clearStockFilters(); setStatusFilter('reponer'); }} className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Para reponer</button>
+            <button type="button" onClick={() => { clearStockFilters(); setStatusFilter('listo-compartir'); setAdvancedFilters((current) => ({ ...current, catalog: 'visible', quality: 'compartible' })); }} className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">Listos para compartir</button>
+            <button type="button" onClick={() => { clearStockFilters(); setAdvancedFilters((current) => ({ ...current, quality: 'incompleta' })); setShowAdvancedFilters(true); }} className="rounded-full border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">Fichas incompletas</button>
+            <button type="button" onClick={() => setShowAdvancedFilters((current) => !current)} aria-expanded={showAdvancedFilters} className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+              {showAdvancedFilters ? 'Ocultar más filtros' : 'Más filtros'}
+            </button>
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="font-semibold text-slate-700 dark:text-slate-200">{filteredProducts.length} resultados</span>
+            {selectedFilteredProducts.length > 0 && <span className="text-[#365fad]">{selectedFilteredProducts.length} seleccionados</span>}
+          </div>
+        </div>
+        {activeFilterLabels.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {activeFilterLabels.map((label) => <span key={label} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{label}</span>)}
+            <button type="button" onClick={clearStockFilters} className="text-xs font-semibold text-[#365fad] hover:underline">Limpiar filtros</button>
+          </div>
+        )}
+        {showAdvancedFilters && (
+          <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70 md:grid-cols-4 xl:grid-cols-8">
+            {[
+              ['minPrice', 'Precio desde'], ['maxPrice', 'Precio hasta'],
+              ['minStock', 'Unidades desde'], ['maxStock', 'Unidades hasta'],
+              ['minMargin', 'Margen desde %'], ['maxMargin', 'Margen hasta %'],
+            ].map(([key, label]) => (
+              <label key={key} className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                {label}
+                <input type="number" min="0" value={advancedFilters[key as keyof typeof advancedFilters] as string} onChange={(event) => setAdvancedFilters((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+              </label>
             ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-        </div>
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <select 
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white appearance-none"
-          >
-            <option value="all">Todas las categorías</option>
-            {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-        </div>
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <select 
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white appearance-none"
-          >
-            <option value="all">Todos los estados</option>
-            <option value="disponible">Disponible</option>
-            <option value="no-disponible">Sin Stock</option>
-            <option value="reponer">Reposición sugerida</option>
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-        </div>
-      </div>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Catálogo
+              <select value={advancedFilters.catalog} onChange={(event) => setAdvancedFilters((current) => ({ ...current, catalog: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                <option value="all">Cualquiera</option><option value="visible">Visible</option><option value="hidden">Oculto</option>
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Calidad de ficha
+              <select value={advancedFilters.quality} onChange={(event) => setAdvancedFilters((current) => ({ ...current, quality: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                <option value="all">Cualquiera</option><option value="sin-foto">Sin foto</option><option value="sin-codigo">Sin código</option><option value="sin-costo">Sin costo registrado</option><option value="incompleta">Ficha incompleta</option><option value="completa">Ficha completa</option><option value="compartible">Apta para compartir</option>
+              </select>
+            </label>
+          </div>
+        )}
+      </section>
 
       {/* Table */}
       <div className="operational-card hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:block">
@@ -1153,7 +1422,7 @@ export default function Stock() {
                 <th className="px-4 py-4 w-10">
                   <input
                     type="checkbox"
-                    aria-label="Seleccionar productos sin código"
+                    aria-label="Seleccionar todos los resultados filtrados"
                     checked={allSelectableSelected}
                     onChange={toggleSelectAll}
                     disabled={selectableIds.length === 0}
@@ -1194,8 +1463,7 @@ export default function Stock() {
                       aria-label={`Seleccionar ${p.name}`}
                       checked={selectedIds.has(p.id)}
                       onChange={() => toggleSelect(p.id)}
-                      disabled={hasBarcode}
-                      title={hasBarcode ? 'Este producto ya tiene código' : 'Seleccionar para generar código'}
+                      title={hasBarcode ? 'Seleccionar para exportar; ya tiene código' : 'Seleccionar para exportar o generar código'}
                       className="w-4 h-4 rounded border-slate-300 text-[#365fad] focus:ring-[#365fad] disabled:opacity-30 disabled:cursor-not-allowed"
                     />
                   </td>
@@ -1239,9 +1507,9 @@ export default function Stock() {
                   <td className="px-6 py-4">
                     <span className={cn(
                       "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                      economics.stock > 0 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
+                      economics.stock > 0 || isProductOnOrder(p) ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
                     )}>
-                      {economics.stock > 0 ? 'Disponible' : 'Sin Stock'}
+                      {economics.stock > 0 ? 'Disponible' : isProductOnOrder(p) ? 'Bajo pedido' : 'Agotado'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -1260,7 +1528,7 @@ export default function Stock() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button disabled={!canWrite} title="Publicar en Facebook" aria-label={`Publicar ${p.name} en Facebook`} onClick={() => setFacebookProduct(p)} className="p-2 text-slate-400 hover:text-[#365fad] disabled:opacity-50"><Share2 size={18} /></button>
+                      <button type="button" title="Compartir producto" aria-label={'Compartir ' + p.name} onClick={() => setShareProduct(p)} className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 dark:text-slate-400 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300">Compartir</button>
                       {hasBarcode ? (
                         <button
                           disabled={isGenerating}
@@ -1284,24 +1552,6 @@ export default function Stock() {
                           {isGenerating
                             ? <Loader2 size={18} className="animate-spin" />
                             : <Barcode size={18} />}
-                        </button>
-                      )}
-                      {p.showInCatalog && user?.catalogSlug && (
-                        <button
-                          onClick={async () => {
-                            try {
-                              const url = getCatalogShareUrl(window.location.origin, user.catalogSlug, p.id);
-                              await navigator.clipboard.writeText(url);
-                              showToast('Enlace copiado', 'success');
-                            } catch {
-                              showToast('No se pudo copiar el enlace.', 'error');
-                            }
-                          }}
-                          aria-label={'Copiar enlace del catálogo de ' + p.name}
-                          title="Copiar enlace del producto en el catálogo"
-                          className="p-2 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
-                        >
-                          <Share2 size={18} />
                         </button>
                       )}
                       <button
@@ -1342,7 +1592,24 @@ export default function Stock() {
       </>}
 
       {/* Add/Edit Modal */}
-      {facebookProduct && <Suspense fallback={<p role="status">Cargando publicación…</p>}><FacebookPublicationModal key={facebookProduct.id} product={facebookProduct} onProductUpdated={updated => { setFacebookProduct(updated); setProducts(previous => previous.map(item => item.id === updated.id ? updated : item)); }} onClose={() => setFacebookProduct(null)} /></Suspense>}
+      {shareProduct && <Suspense fallback={<p role="status" className="sr-only">Cargando opciones para compartir…</p>}>
+        <StockProductShareModal
+          product={shareProduct}
+          availability={(() => {
+            const stock = holdingsEnabled
+              ? getVisibleProductStock(shareProduct.id, holdingsByProduct.get(shareProduct.id) ?? [])
+              : shareProduct.stock;
+            return stock > 0 ? 'Disponible' : isProductOnOrder(shareProduct) ? 'Bajo pedido' : 'Agotado';
+          })()}
+          catalogUrl={user?.catalogSlug && shareProduct.showInCatalog && !shareProduct.catalogOnly
+            ? getCatalogShareUrl(window.location.origin, user.catalogSlug, shareProduct.id)
+            : null}
+          currencySymbol={user?.currencySymbol}
+          onClose={() => setShareProduct(null)}
+          onEdit={() => { const product = shareProduct; setShareProduct(null); if (product) openProductEditor(product); }}
+          onOpenResellers={() => { setShareProduct(null); navigate('/revendedores'); }}
+        />
+      </Suspense>}
       {deleteTarget && !isMobile && <Suspense fallback={<p role="status">Cargando confirmación…</p>}>
         <ProductDeleteConfirmation product={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={deleteProduct} />
       </Suspense>}
@@ -1439,6 +1706,24 @@ export default function Stock() {
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
               {validationErrors.stock && <span className="mt-1 block text-sm text-rose-700 dark:text-rose-300">{validationErrors.stock}</span>}
+            </div>}
+
+            {!creatingProductForReseller && <div className="md:col-span-2">
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Disponibilidad cuando no hay stock</label>
+              <select
+                value={formData.customFields?.availability === 'on_order' ? 'on_order' : 'stock'}
+                onChange={(event) => setFormData((current) => {
+                  const customFields = { ...(current.customFields ?? {}) };
+                  if (event.target.value === 'on_order') customFields.availability = 'on_order';
+                  else delete customFields.availability;
+                  return { ...current, customFields };
+                })}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              >
+                <option value="stock">Agotado según unidades</option>
+                <option value="on_order">Bajo pedido</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Marcá Bajo pedido si podés conseguir el artículo aunque hoy no tengas unidades.</p>
             </div>}
 
             {!holdingsEnabled && !creatingProductForReseller && <div>
