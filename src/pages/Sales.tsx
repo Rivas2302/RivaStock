@@ -1234,7 +1234,7 @@ export default function Sales() {
       loading={loading}
       error={loadError}
     />}
-    <div className={cn('operational-page space-y-6', isMobile && 'hidden')}>
+    <div className={cn('operational-page w-full min-w-0 max-w-full space-y-6', isMobile && 'hidden')}>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Ventas</h2>
@@ -1415,34 +1415,34 @@ export default function Sales() {
       </div>
 
       {/* Table */}
-      <div className="operational-card bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
+      <div className="operational-card min-w-0 max-w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
+          <table className="w-full min-w-[980px] table-fixed text-left">
             <thead className="table-head bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
               <tr>
-                <th className="px-6 py-4">Fecha</th>
-                <th className="px-6 py-4">Producto</th>
-                <th className="px-6 py-4">Cant.</th>
-                <th className="px-6 py-4">Precio U.</th>
-                <th className="px-6 py-4">Ajuste</th>
-                <th className="px-6 py-4">Total</th>
-                <th className="px-6 py-4">Método</th>
-                <th className="px-6 py-4">Estado</th>
-                <th className="px-6 py-4 text-right">Acciones</th>
+                <th className="sticky left-0 z-20 w-[112px] min-w-[112px] bg-slate-50 px-3 py-4 dark:bg-slate-800">Fecha</th>
+                <th className="w-[190px] px-3 py-4">Producto</th>
+                <th className="w-[60px] px-3 py-4">Cant.</th>
+                <th className="w-[100px] px-3 py-4">Precio U.</th>
+                <th className="w-[100px] px-3 py-4">Ajuste</th>
+                <th className="w-[110px] px-3 py-4">Total</th>
+                <th className="w-[105px] px-3 py-4">Método</th>
+                <th className="w-[95px] px-3 py-4">Estado</th>
+                <th className="w-[108px] px-3 py-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {pagination.rows.map((s) => (
                 <React.Fragment key={s.id}>
-                  <tr className="table-row text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap"><span className="block">{formatDate(s.date)}</span><span className="mt-1 block font-mono text-[9px] text-slate-400">Ticket {getSaleTicketLabel(s.id)}</span></td>
-                  <td className="px-6 py-4">
+                  <tr className="table-row group text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <td className="sticky left-0 z-10 w-[112px] min-w-[112px] bg-white px-3 py-4 dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50 dark:text-slate-300 whitespace-nowrap"><span className="block">{formatDate(s.date)}</span><span className="mt-1 block font-mono text-[9px] text-slate-400">Ticket {getSaleTicketLabel(s.id)}</span></td>
+                  <td className="w-[190px] max-w-[190px] px-3 py-4">
                     <button
                       type="button"
                       onClick={() => setExpandedSaleId(expandedSaleId === s.id ? null : s.id)}
-                      className="text-left w-full"
+                      className="min-w-0 w-full text-left"
                     >
-                      <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <p className="break-words font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                         {s.productName}
                         {(s.items.length > 1 || s.ownerNames.length > 0) && (
                           <span className="inline-flex items-center justify-center w-4 h-4 text-slate-400">
@@ -1476,23 +1476,23 @@ export default function Sales() {
                       </div>
                     </button>
                   </td>
-                  <td className="px-6 py-4 dark:text-slate-300">{s.quantity}</td>
-                  <td className="px-6 py-4 dark:text-slate-300">
+                  <td className="whitespace-nowrap px-3 py-4 dark:text-slate-300">{s.quantity}</td>
+                  <td className="whitespace-nowrap px-3 py-4 dark:text-slate-300">
                     {s.unitPrice === null ? '-' : formatCurrency(roundPrice(s.unitPrice))}
                   </td>
                   <td className={cn(
-                    "px-6 py-4 font-medium",
+                    "px-3 py-4 font-medium",
                     s.adjustment > 0 ? "text-rose-500" : s.adjustment < 0 ? "text-emerald-500" : "text-slate-400"
                   )}>
                     {s.adjustment !== 0 ? formatCurrency(roundPrice(s.adjustment)) : '-'}
                   </td>
-                  <td className="px-6 py-4 font-bold dark:text-white">{formatCurrency(roundPrice(s.total))}</td>
-                  <td className="px-6 py-4">
+                  <td className="whitespace-nowrap px-3 py-4 font-bold dark:text-white">{formatCurrency(roundPrice(s.total))}</td>
+                  <td className="px-3 py-4">
                     {s.status === 'Pagado' ? (
                       <span className="text-xs text-slate-500 dark:text-slate-400">{s.paymentMethod}</span>
                     ) : '-'}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-3 py-4">
                     {shouldRenderSalesMutationActions(
                       holdingsEnabled,
                       ticketHasFullOperableScope(s),
