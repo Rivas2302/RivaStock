@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   ArrowDownCircle, BarChart3, Building2, Calculator, ClipboardList, FileText, History,
   Images, LayoutDashboard, LogOut, Package, ScanLine, Settings, ShoppingCart, Sparkles,
-  Truck, Users, Wallet, Zap, Search,
+  Truck, Users, Wallet, Zap, Search, X,
 } from 'lucide-react';
 import type { ModuleKey, PermissionMatrix } from '../types';
 import type { BusinessModuleKey } from '../lib/businessPlan';
@@ -46,6 +46,7 @@ const NAV_ITEMS: NavItem[] = [
 
 interface AppNavigationProps {
   permissions: PermissionMatrix;
+  isPlatformAdmin?: boolean;
   businessModules: Partial<Record<BusinessModuleKey, boolean>>;
   isOwner: boolean;
   canWrite: boolean;
@@ -69,6 +70,7 @@ export default function AppNavigation(props: AppNavigationProps) {
     isOwner: props.isOwner,
   };
   const items = getVisibleNavigation(NAV_ITEMS, permissionState);
+  if (props.isPlatformAdmin) items.push({ name: 'Plataforma', path: '/plataforma', icon: Building2, module: null });
   const mobileItems = items.filter(item => !item.desktopOnly);
   const actions = getQuickActions(permissionState);
   const groups = DESKTOP_NAVIGATION_GROUPS.map(group => ({
@@ -90,9 +92,10 @@ export default function AppNavigation(props: AppNavigationProps) {
       <div className="p-6"><h1 className="brand-mark text-2xl font-extrabold text-white">RivaStock</h1><p className="mt-1 text-xs text-slate-400">{props.businessName}</p></div>
       <div className="px-4 pb-3">
         <Link to="/" className={cn('nav-item flex min-h-11 items-center gap-3 px-3 py-2 transition-colors', props.pathname === '/' ? 'nav-item-active text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white')}><LayoutDashboard size={19} strokeWidth={1.8} /><span className="font-medium">Inicio</span></Link>
-        <label className="mt-2 flex min-h-11 items-center gap-2 rounded-lg border border-white/10 px-3 text-slate-400"><Search size={16} /><input aria-label="Ir a" placeholder="Ir a…" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-500" /></label>
+        <label className="sidebar-search mt-3 flex min-h-11 items-center gap-2 rounded-xl border px-3 text-slate-400 transition-all"><Search size={16} className="shrink-0" /><input aria-label="Buscar en el menú" placeholder="Buscar módulo..." value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-500" />{search && <button type="button" aria-label="Limpiar búsqueda del menú" onClick={() => setSearch('')} className="grid size-7 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white"><X size={14} /></button>}</label>
       </div>
       <nav className="flex-1 min-h-0 px-4 pb-6 space-y-5 overflow-y-auto overscroll-contain">
+        {filteredGroups.length === 0 && search.trim() && <p className="px-3 py-4 text-sm text-slate-500">No encontré esa sección.</p>}
         {filteredGroups.map(group => <section key={group.label} className="space-y-1">
           <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{group.label}</p>
           {group.items.map(item => {

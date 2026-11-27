@@ -157,8 +157,8 @@ function AttentionRow({
 }
 
 function MonthSalesChart({ data }: { data: DashboardSummary['monthlySalesData'] }) {
-  const max = Math.max(1, ...data.map((item) => item.total));
-  const description = data.map((item) => shortMonthLabel(item.label) + ': ' + formatCurrency(item.total)).join(', ');
+  const max = Math.max(1, ...data.flatMap(item => [item.sold ?? item.total, item.collected ?? 0]));
+  const description = data.map((item) => shortMonthLabel(item.label) + ': vendido ' + formatCurrency(item.sold ?? item.total) + ', cobrado ' + formatCurrency(item.collected ?? 0)).join(', ');
   return (
     <div className="pt-3">
       <div role="img" aria-label={'Ventas de los últimos seis meses: ' + description} className="grid h-28 grid-cols-6 items-end gap-2 border-b border-[var(--line)]">
@@ -168,13 +168,14 @@ function MonthSalesChart({ data }: { data: DashboardSummary['monthlySalesData'] 
             aria-hidden="true"
             className="flex h-full items-end"
           >
-            <span
-              className="w-full rounded-t bg-[var(--surface-muted)] last:bg-[var(--brand)]"
-              style={{ height: Math.max(8, Math.round((item.total / max) * 100)) + '%', background: index === data.length - 1 ? 'var(--brand)' : 'var(--surface-muted)' }}
-            />
+            <span className="flex h-full w-full items-end justify-center gap-0.5">
+              <span className="w-1/2 rounded-t-sm" style={{ height: Math.max(5, Math.round(((item.sold ?? item.total) / max) * 100)) + '%', background: index === data.length - 1 ? '#34d399' : 'var(--line-strong)' }} />
+              <span className="w-1/2 rounded-t-sm" style={{ height: Math.max(5, Math.round(((item.collected ?? 0) / max) * 100)) + '%', background: index === data.length - 1 ? '#60a5fa' : 'var(--surface-muted)' }} />
+            </span>
           </span>
         ))}
       </div>
+      <div aria-hidden="true" className="mt-2 flex justify-center gap-4 text-[10px] text-[var(--ink-subtle)]"><span className="inline-flex items-center gap-1"><i className="size-2 rounded-sm bg-emerald-400" />Vendido</span><span className="inline-flex items-center gap-1"><i className="size-2 rounded-sm bg-blue-400" />Cobrado</span></div>
       <div aria-hidden="true" className="mt-1 grid grid-cols-6 gap-2 text-center text-xs text-[var(--ink-subtle)]">
         {data.map((item, index) => (
           <span key={item.label} className={index === data.length - 1 ? 'font-semibold text-[var(--ink)]' : ''}>
@@ -189,7 +190,6 @@ function MonthSalesChart({ data }: { data: DashboardSummary['monthlySalesData'] 
 export default function MobileHome({
   user,
   isOwner,
-  isPlatformAdmin,
   permissions,
   now,
   summary,
@@ -379,8 +379,18 @@ export default function MobileHome({
               <div className="min-w-0">
                 <dt className="text-sm text-[var(--ink-subtle)]">Ventas de {monthTitle}</dt>
                 <dd className="mt-1 text-[22px] font-medium tracking-tight text-[var(--ink)]">
-                  <SourceValue state={sourceStates.sales} retry={() => onRetrySource('sales')}>{formatCurrency(summary.month.salesTotal)}</SourceValue>
+                  <SourceValue state={sourceStates.sales} retry={() => onRetrySource('sales')}>{formatCurrency(summary.month.soldTotal ?? summary.month.salesTotal)}</SourceValue>
                 </dd>
+                <p className="text-[11px] text-[var(--ink-muted)]">Cobrado {formatCurrency(summary.month.collectedTotal ?? 0)}</p>
+              </div>
+            )}
+            {showSales && (
+              <div className="min-w-0">
+                <dt className="text-sm text-[var(--ink-subtle)]">Ventas de esta semana</dt>
+                <dd className="mt-1 text-[22px] font-medium tracking-tight text-[var(--ink)]">
+                  <SourceValue state={sourceStates.sales} retry={() => onRetrySource('sales')}>{formatCurrency(summary.week?.salesTotal ?? 0)}</SourceValue>
+                </dd>
+                <p className="text-[11px] text-[var(--ink-muted)]">Cobrado {formatCurrency(summary.week?.collectedTotal ?? 0)}</p>
               </div>
             )}
             {showCash && (
@@ -498,11 +508,7 @@ export default function MobileHome({
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
           {exporting ? 'Preparando reporte…' : 'Exportar reporte en PDF'}
         </button>
-        {isPlatformAdmin && (
-          <Link to="/plataforma" className="flex min-h-11 items-center justify-center text-sm font-medium text-[var(--ink-subtle)]">
-            Panel de plataforma
-          </Link>
-        )}
+
       </div>
 
       {businessSheetOpen && (

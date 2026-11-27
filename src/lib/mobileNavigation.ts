@@ -24,6 +24,7 @@ export const NAVIGATION_GROUPS = [
   { label: 'Clientes y proveedores', paths: ['/clientes', '/proveedores', '/revendedores', '/compras'] },
   { label: 'Dinero', paths: ['/caja', '/reportes', '/calculadora'] },
   { label: 'Herramientas', paths: ['/ia', '/ia/conocimientos', '/automatizaciones', '/trazabilidad', '/config'] },
+  { label: 'Administración', paths: ['/plataforma'] },
 ] as const;
 
 export const DESKTOP_NAVIGATION_GROUPS = [
@@ -33,6 +34,7 @@ export const DESKTOP_NAVIGATION_GROUPS = [
   { ...NAVIGATION_GROUPS[2], paths: NAVIGATION_GROUPS[2].paths.filter(path => path !== '/revendedores') },
   NAVIGATION_GROUPS[3],
   NAVIGATION_GROUPS[4],
+  NAVIGATION_GROUPS[5],
 ] as const;
 
 export const QUICK_ACTIONS: Array<{ label: string; description: string; path: string; module: ModuleKey; businessModule: BusinessModuleKey; write?: boolean }> = [

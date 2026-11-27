@@ -166,6 +166,18 @@ html.catalog-dark { color-scheme: dark; }
     letter-spacing: -0.055em;
   }
 
+  .sidebar-search {
+    background: rgb(255 255 255 / 0.035);
+    border-color: rgb(255 255 255 / 0.08);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025);
+  }
+
+  .sidebar-search:focus-within {
+    background: rgb(255 255 255 / 0.075);
+    border-color: color-mix(in srgb, var(--brand) 72%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent), 0 8px 20px rgb(0 0 0 / 0.16);
+  }
+
   .nav-item {
     border: 1px solid transparent;
     border-radius: 0.5rem;
@@ -219,6 +231,40 @@ html.catalog-dark { color-scheme: dark; }
     background: currentColor;
     opacity: 0.14;
   }
+
+  .sales-period-card {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 0.14);
+    border-radius: 1rem;
+    color: white;
+    box-shadow: 0 16px 30px rgb(15 23 42 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.22), inset 0 -1px 0 rgb(0 0 0 / 0.12);
+    transform: translateY(0);
+    transition: transform 180ms ease, box-shadow 180ms ease;
+  }
+
+  .sales-period-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 22px 36px rgb(15 23 42 / 0.24), inset 0 1px 0 rgb(255 255 255 / 0.24);
+  }
+
+  .sales-period-card::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    width: 13rem;
+    height: 13rem;
+    right: -4rem;
+    top: -7rem;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.14);
+    filter: blur(1px);
+  }
+
+  .sales-period-card--today { background: linear-gradient(135deg, #0f766e, #064e3b); }
+  .sales-period-card--week { background: linear-gradient(135deg, #2563eb, #1e3a8a); }
+  .sales-period-card--month { background: linear-gradient(135deg, #7c3aed, #4c1d95); }
 
   .dashboard-panel-header {
     border-bottom: 1px solid var(--line);

@@ -189,7 +189,7 @@ describe('mobile home', () => {
     };
     await render({ ...baseProps, permissions, isPlatformAdmin: true });
     expect(host.querySelector('a[href="/pos"]')).toBeNull();
-    expect(host.querySelector('a[href="/plataforma"]')).not.toBeNull();
+    expect(host.querySelector('a[href="/plataforma"]')).toBeNull();
     expect(host.querySelector('button[aria-label="Abrir menú completo"]')).toBeNull();
     expect(mocks.openMobileMenu).not.toHaveBeenCalled();
   });

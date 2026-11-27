@@ -1,6 +1,6 @@
 import { lazyWithRetry } from '../lib/lazyWithRetry';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useBusinessPlan } from '../hooks/useBusinessPlan';
 import type { BusinessModuleKey } from '../lib/businessPlan';
@@ -17,13 +17,12 @@ import { normalizeDisplayName } from '../lib/accountProfile';
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, authUser, isOwner, logout, refetchData, permissions } = useAuth();
+  const { user, authUser, isOwner, isPlatformAdmin, logout, refetchData, permissions } = useAuth();
   const [mobileChrome, setMobileChrome] = useState({ hideHeader: false, hideBottomNav: false });
   const { plan } = useBusinessPlan();
   const businessCanWrite = Boolean(plan && plan.status !== 'suspended');
   const needsBusinessSetup = !user?.onboardingCompletedAt && isOwner;
   const [loggingOut, setLoggingOut] = useState(false);
-  const lastRefetchAtRef = useRef(0);
   const { unreadCount, notice, clearNotice } = useUnreadCatalogOrders(user?.uid);
 
   const includedModules = plan ? plan.limits.modules : DISABLED_BUSINESS_MODULES;
@@ -34,29 +33,9 @@ export default function Layout() {
 
   useEffect(() => {
     if (plan?.status === 'suspended') return;
-    const MIN_REFETCH_INTERVAL_MS = 10_000;
-    const maybeRefetch = () => {
-      const now = Date.now();
-      if (now - lastRefetchAtRef.current < MIN_REFETCH_INTERVAL_MS) return;
-      lastRefetchAtRef.current = now;
-      refetchData();
-    };
-
-    const onFocus = () => maybeRefetch();
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') maybeRefetch();
-    };
-    const onOnline = () => maybeRefetch();
-
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', onOnline);
-
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', onOnline);
-    };
+    // Returning to a browser tab should preserve the current screen. Refresh only after connectivity returns.
+    window.addEventListener('online', refetchData);
+    return () => window.removeEventListener('online', refetchData);
   }, [plan?.status, refetchData]);
 
   const handleLogout = async () => {
@@ -85,6 +64,7 @@ export default function Layout() {
         permissions={permissions as PermissionMatrix}
         businessModules={includedModules}
         isOwner={isOwner}
+        isPlatformAdmin={isPlatformAdmin}
         canWrite={businessCanWrite}
         businessName={user?.businessName ?? 'RivaStock'}
         displayName={displayName}
