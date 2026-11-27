@@ -68,7 +68,10 @@ export function buildSuperOfferOrderWhatsAppMessage(input: {
     total: formatOrderAmount(input.total),
     link: input.trackingUrl ?? '',
   };
-  return input.template.replace(/\{(negocio|codigo|productos|subtotal|envio|total|link)\}/g, (_, key: string) => values[key]);
+  const message = input.template.replace(/\{(negocio|codigo|productos|subtotal|envio|total|link)\}/g, (_, key: string) => values[key]).trim();
+  return input.trackingUrl && !input.template.includes('{link}')
+    ? `${message}${message ? '\n\n' : ''}Ver estado de mi pedido: ${input.trackingUrl}`
+    : message;
 }
 
 export function buildRetailOrderWhatsAppMessage(input: RetailOrderMessageInput): string {

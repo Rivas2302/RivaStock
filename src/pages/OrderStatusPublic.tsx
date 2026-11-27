@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle2, Clock3, Package, RefreshCw, Truck, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock3, Copy, Package, RefreshCw, Share2, Truck, XCircle } from 'lucide-react';
 import { supabase } from '../lib/db';
 import { formatCurrency } from '../lib/utils';
+import { copyTextToClipboard } from '../lib/clipboard';
 
 interface PublicOrderTracking {
   order_code: string;
@@ -42,6 +43,7 @@ export default function OrderStatusPublic() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [linkActionMessage, setLinkActionMessage] = useState('');
 
   const refresh = useCallback(async (initial = false) => {
     if (!orderId) {
@@ -77,6 +79,30 @@ export default function OrderStatusPublic() {
     const timer = window.setInterval(() => void refresh(false), 30_000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  const copyTrackingLink = async () => {
+    const copied = await copyTextToClipboard(window.location.href);
+    setLinkActionMessage(copied
+      ? 'Enlace copiado. Guardalo en tus notas o enviátelo por WhatsApp.'
+      : 'No se pudo copiar el enlace. Usá Compartir para guardarlo.');
+  };
+
+  const shareTrackingLink = async () => {
+    const shareData = {
+      title: `Seguimiento del pedido ${order?.order_code ?? ''}`.trim(),
+      text: `Guardá este enlace para consultar el estado de tu pedido ${order?.order_code ?? ''}.`,
+      url: window.location.href,
+    };
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (shareError) {
+        if (shareError instanceof Error && shareError.name === 'AbortError') return;
+      }
+    }
+    await copyTrackingLink();
+  };
 
   const items = useMemo(() => (Array.isArray(order?.items) ? order.items : []).map((item, index) => {
     const quantity = Math.max(1, Number(item.quantity) || 1);
@@ -198,7 +224,11 @@ export default function OrderStatusPublic() {
             </div>
           </div>
         </section>
-        <p className="mt-5 text-center text-xs text-slate-500">Este enlace es privado. Guardalo para consultar el avance de tu pedido.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <button type="button" onClick={() => void copyTrackingLink()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/15 bg-slate-900 px-4 text-sm font-bold text-slate-100 transition hover:bg-white/5"><Copy size={17}/>{linkActionMessage.startsWith('Enlace copiado') ? 'Enlace copiado' : 'Copiar enlace'}</button>
+          <button type="button" onClick={() => void shareTrackingLink()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 text-sm font-black text-slate-950 transition hover:bg-emerald-400"><Share2 size={17}/>Compartir o guardar</button>
+        </div>
+        <p role="status" aria-live="polite" className="mt-3 min-h-5 text-center text-xs text-slate-400">{linkActionMessage || 'Este enlace es privado. Copialo o compartilo para volver a consultar el avance de tu pedido.'}</p>
       </div>
     </main>
   );

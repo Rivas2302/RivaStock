@@ -6,6 +6,8 @@ import { usePermission } from '../hooks/usePermission';
 import { db, callRpc } from '../lib/db';
 import { Order, Sale } from '../types';
 import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
+import { copyTextToClipboard } from '../lib/clipboard';
+import { getPublicOrderTrackingUrl } from '../lib/orderTracking';
 import { 
   ClipboardList, 
   MessageCircle, 
@@ -21,6 +23,8 @@ import {
   ChevronDown,
   Trash2,
   Search,
+  Copy,
+  Link2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -30,6 +34,29 @@ function getOrderDeliveryMethod(order: Order): 'pickup' | 'shipping' {
   return order.deliveryMethod === 'shipping' || (!order.deliveryMethod && Boolean(order.customerAddress?.trim()))
     ? 'shipping'
     : 'pickup';
+}
+
+function getOrderStatusLabel(status: Order['status']): string {
+  switch (status) {
+    case 'En Proceso': return 'En preparación';
+    case 'Entregado': return 'Entregado';
+    case 'Cancelado': return 'Cancelado';
+    default: return 'Recibido';
+  }
+}
+
+function buildOrderTrackingMessage(order: Order, trackingUrl: string): string {
+  const customerName = order.customerName?.trim();
+  const orderCode = order.orderCode?.trim() || 'del catálogo';
+  const delivery = getOrderDeliveryMethod(order) === 'shipping' ? 'Envío' : 'Retiro';
+  return [
+    `Hola${customerName ? ` ${customerName}` : ''}! Te comparto el seguimiento de tu pedido ${orderCode}.`,
+    `Estado actual: ${getOrderStatusLabel(order.status)}.`,
+    `Total: ${formatCurrency(roundPrice(order.total))} · Entrega: ${delivery}.`,
+    'Podés consultar el detalle y los cambios desde este enlace:',
+    trackingUrl,
+    'Guardalo para volver a consultar el estado cuando quieras.',
+  ].join('\n');
 }
 
 export default function Orders() {
@@ -50,8 +77,19 @@ export default function Orders() {
   const [conversionError, setConversionError] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState<{ key: string; token: number; message: string } | null>(null);
   const readReceiptIds = useRef(new Set<string>());
   const deferredStatusFilter = useDeferredValue(statusFilter);
+
+  const copyOrderContent = async (order: Order, kind: 'message' | 'link') => {
+    const trackingUrl = getPublicOrderTrackingUrl(order.id);
+    const value = kind === 'message' ? buildOrderTrackingMessage(order, trackingUrl) : trackingUrl;
+    const copied = await copyTextToClipboard(value);
+    const token = Date.now();
+    const key = `${order.id}:${kind}`;
+    setCopyFeedback({ key, token, message: copied ? 'Copiado' : 'No se pudo copiar' });
+    window.setTimeout(() => setCopyFeedback(current => current?.token === token ? null : current), 2500);
+  };
 
   const fetchData = async () => {
     if (!user) return;
@@ -329,22 +367,29 @@ export default function Orders() {
                   Eliminar pedido
                 </button>}
 
-                <div className="grid grid-cols-2 gap-2">
-                  <a 
-                    href={`https://wa.me/${order.customerPhone.replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-center p-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors"
-                  >
-                    <MessageCircle size={20} />
-                  </a>
-                  <a 
-                    href={`mailto:${order.customerEmail}`}
-                    className="flex items-center justify-center p-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors"
-                  >
-                    <Mail size={20} />
-                  </a>
-                </div>
+                {(() => {
+                  const trackingUrl = getPublicOrderTrackingUrl(order.id);
+                  const trackingMessage = buildOrderTrackingMessage(order, trackingUrl);
+                  const phone = order.customerPhone.replace(/\D/g, '');
+                  const feedback = copyFeedback?.key.startsWith(`${order.id}:`) ? copyFeedback.message : '';
+                  return (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-[minmax(0,1fr)_3rem] gap-2">
+                        {phone
+                          ? <a href={`https://wa.me/${phone}?text=${encodeURIComponent(trackingMessage)}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-2 text-xs font-bold text-white transition-colors hover:bg-emerald-600"><MessageCircle size={17} />Enviar seguimiento</a>
+                          : <button type="button" disabled className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-500/40 px-2 text-xs font-bold text-white/70"><MessageCircle size={17} />Sin WhatsApp</button>}
+                        {order.customerEmail?.trim()
+                          ? <a href={`mailto:${order.customerEmail}?subject=${encodeURIComponent(`Seguimiento del pedido ${order.orderCode ?? ''}`)}&body=${encodeURIComponent(trackingMessage)}`} aria-label="Enviar seguimiento por correo" title="Enviar por correo" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-blue-500 text-white transition-colors hover:bg-blue-600"><Mail size={18} /></a>
+                          : <button type="button" disabled aria-label="Correo no disponible" title="Correo no disponible" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-blue-500/40 text-white/70"><Mail size={18} /></button>}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => void copyOrderContent(order, 'message')} aria-label="Copiar mensaje de seguimiento" className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-1 text-[11px] font-semibold leading-4 text-[var(--ink)] transition-colors hover:bg-[var(--surface-muted)]"><Copy size={15} />{copyFeedback?.key === `${order.id}:message` ? feedback : 'Copiar mensaje'}</button>
+                        <button type="button" onClick={() => void copyOrderContent(order, 'link')} aria-label="Copiar enlace de seguimiento" className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-1 text-[11px] font-semibold leading-4 text-[var(--ink)] transition-colors hover:bg-[var(--surface-muted)]"><Link2 size={15} />{copyFeedback?.key === `${order.id}:link` ? feedback : 'Copiar enlace'}</button>
+                      </div>
+                      {feedback && <p role="status" aria-live="polite" className="text-center text-xs text-[var(--ink-muted)]">{feedback}</p>}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </motion.div>

@@ -12,6 +12,7 @@ import { getResellerBuyingPolicyLines } from '../lib/resellerBuyingPolicy';
 import { getCatalogShareUrl } from '../lib/catalogShare';
 import { buildCatalogOrderWhatsAppMessage, buildSuperOfferOrderWhatsAppMessage, type DeliveryMethod } from '../lib/catalogOrder';
 import { getPublicOrderTrackingPath, getPublicOrderTrackingUrl } from '../lib/orderTracking';
+import { copyTextToClipboard } from '../lib/clipboard';
 import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogAnnouncementBackgroundColor, getCatalogAnnouncementTextColor, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
 import CatalogAnnouncement from '../components/catalog/CatalogAnnouncement';
@@ -230,6 +231,7 @@ export default function PublicCatalog() {
   const [categoryCanScrollRight, setCategoryCanScrollRight] = useState(false);
   const [shareProductId, setShareProductId] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const [trackingLinkCopyMessage, setTrackingLinkCopyMessage] = useState('');
   const detailSwipeStartY = useRef<number | null>(null);
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -306,6 +308,16 @@ export default function PublicCatalog() {
     const startY = productSheetDragStartY.current;
     productSheetDragStartY.current = null;
     if (startY !== null && event.clientY - startY >= 72) closeProduct();
+  };
+
+  const copyCatalogOrderTrackingLink = async () => {
+    const orderId = catalogOrderReceipt?.orderId;
+    if (!orderId) return;
+    const copied = await copyTextToClipboard(getPublicOrderTrackingUrl(orderId));
+    setTrackingLinkCopyMessage(copied
+      ? 'Enlace copiado. Guardalo para volver a consultar tu pedido.'
+      : 'No se pudo copiar. Abrí el estado del pedido y usá Compartir.');
+    window.setTimeout(() => setTrackingLinkCopyMessage(''), 3000);
   };
 
   const handleShareProduct = async (product: PublicCatalogProduct, action: 'copy' | 'whatsapp') => {
@@ -2420,7 +2432,11 @@ if (loading) {
                 {catalogOrderWhatsAppUrl
                   ? <a href={catalogOrderWhatsAppUrl} target="_blank" rel="noreferrer" data-testid="send-order-whatsapp" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-base font-bold text-white"><MessageCircle size={20}/>Enviar pedido por WhatsApp</a>
                   : <p className="rounded-xl bg-[var(--surface-muted)] px-4 py-3 text-sm font-semibold">El negocio te va a contactar.</p>}
-                {catalogOrderReceipt.orderId && <Link to={getPublicOrderTrackingPath(catalogOrderReceipt.orderId)} data-testid="view-catalog-order" className="block text-center text-sm font-semibold text-[var(--brand-strong)]">Estado de mi pedido</Link>}
+                {catalogOrderReceipt.orderId && <div className="space-y-2">
+                  <Link to={getPublicOrderTrackingPath(catalogOrderReceipt.orderId)} data-testid="view-catalog-order" className="flex min-h-11 items-center justify-center rounded-xl text-sm font-bold text-[var(--brand-strong)]">Ver estado de mi pedido</Link>
+                  <button type="button" onClick={() => void copyCatalogOrderTrackingLink()} className={cn("flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border px-4 text-sm font-bold transition-colors", darkMode ? "border-white/15 text-white hover:bg-white/5" : "border-slate-200 text-slate-700 hover:bg-slate-50")}><Copy size={17}/>{trackingLinkCopyMessage.startsWith('Enlace copiado') ? 'Enlace copiado' : 'Copiar enlace para guardarlo'}</button>
+                  <p role="status" aria-live="polite" className="min-h-4 text-center text-xs text-[var(--ink-muted)]">{trackingLinkCopyMessage}</p>
+                </div>}
               </div>
               <button
                 onClick={() => setIsSuccess(false)}
