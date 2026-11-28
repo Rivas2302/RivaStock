@@ -26,7 +26,7 @@ import {
 } from '../lib/publicCatalogAvailability';
 import { getCommercialRuleMessage, isCommercialRuleSatisfied } from '../lib/commercialRules';
 import { getAllCategoryPhotoUrls, getCategoryPhotoUrls } from '../lib/catalogCategoryPhotos';
-import { buildResellerCatalogCategories, getResellerProductCategoryKey, isUncategorizedCategoryName } from '../lib/resellerCatalogCategories';
+import { getResellerProductCategoryKey, isUncategorizedCategoryName } from '../lib/resellerCatalogCategories';
 import {
   ShoppingBag,
   Search,
@@ -507,7 +507,8 @@ useEffect(() => {
         setResellerAvailable(hasResellerCatalog);
         const savedAccessCode = sessionStorage.getItem(`catalog-reseller-session:${slug}`)?.trim() ?? '';
         const savedChannel = sessionStorage.getItem(`catalog-channel:${slug}`);
-        if (hasResellerCatalog && savedAccessCode && savedChannel === 'reseller') {
+        const requestedResellerChannel = new URLSearchParams(routeLocationRef.current.search).get('channel') === 'reseller';
+        if (hasResellerCatalog && savedAccessCode && (savedChannel === 'reseller' || requestedResellerChannel)) {
           try {
             const [unlocked, policy, rounds] = await Promise.all([
               unlockResellerCatalog(slug, savedAccessCode),
@@ -518,14 +519,24 @@ useEffect(() => {
             setResellerCatalog(unlocked);
             setResellerBuyingPolicy(policy);
             setSupplierRounds(rounds);
-            setSelectedSupplierRoundId(rounds[0]?.id ?? null);
+            const requestedParams = new URLSearchParams(routeLocationRef.current.search);
+            const requestedRoundId = requestedParams.get('round');
+            const requestedProductId = productIdRef.current;
+            const preferredRound = rounds.find(round => round.id === requestedRoundId)
+              ?? rounds.find(round => requestedProductId && round.products.some(product => product.id === requestedProductId))
+              ?? (!requestedProductId ? rounds[0] : null);
+            setSelectedSupplierRoundId(preferredRound?.id ?? null);
             setResellerAccessCode(savedAccessCode);
+            sessionStorage.setItem(`catalog-channel:${slug}`, 'reseller');
             setChannel('reseller');
-            setProducts(rounds[0] ? toRoundProducts(rounds[0]) : unlocked.products);
+            setProducts(preferredRound ? toRoundProducts(preferredRound) : unlocked.products);
           } catch {
             sessionStorage.removeItem(`catalog-reseller-session:${slug}`);
             sessionStorage.setItem(`catalog-channel:${slug}`, 'retail');
+            if (requestedResellerChannel) setIsAccessOpen(true);
           }
+        } else if (hasResellerCatalog && requestedResellerChannel) {
+          setIsAccessOpen(true);
         }
       } catch (err) {
         if (cancelled) return;
@@ -642,10 +653,37 @@ useEffect(() => {
     () => products.filter(product => isSuperOffersRoute || config?.showOutOfStock || product.stock > 0 || product.availability === 'on_order'),
     [config?.showOutOfStock, isSuperOffersRoute, products],
   );
-  const resellerCategoryOptions = useMemo(
-    () => buildResellerCatalogCategories(catalogProducts, categories),
-    [catalogProducts, categories],
-  );
+  const resellerCategoryOptions = useMemo(() => {
+    const settings = config?.resellerCategorySettings;
+    if (settings?.mode !== 'categories') return [];
+    const categoryIds = settings.categoryIds.filter(id => categories.some(category => category.id === id));
+    const options = categoryIds.flatMap(id => {
+      const category = categories.find(item => item.id === id);
+      if (!category) return [];
+      const productsInCategory = catalogProducts.filter(product => product.categoryId === id);
+      return [{
+        id: `owner:${id}`,
+        name: category.name,
+        count: productsInCategory.length,
+        photoUrl: getCategoryPhotoUrls(id, catalogProducts, config?.categoryPhotoOverrides?.[id], config?.categoryPhotosEnabled !== false)[0]
+          ?? productsInCategory.find(product => product.images?.[0] || product.imageUrl)?.images?.[0]
+          ?? productsInCategory.find(product => product.imageUrl)?.imageUrl
+          ?? null,
+      }];
+    });
+    const otherProducts = catalogProducts.filter(product => !product.categoryId || !categoryIds.includes(product.categoryId));
+    if (settings.showOtherProducts && otherProducts.length > 0) {
+      options.push({
+        id: 'reseller:other',
+        name: 'Otros productos',
+        count: otherProducts.length,
+        photoUrl: otherProducts.find(product => product.images?.[0] || product.imageUrl)?.images?.[0]
+          ?? otherProducts.find(product => product.imageUrl)?.imageUrl
+          ?? null,
+      });
+    }
+    return options;
+  }, [catalogProducts, categories, config?.categoryPhotoOverrides, config?.categoryPhotosEnabled, config?.resellerCategorySettings]);
   const categoryOptions = useMemo(() => channel === 'reseller'
     ? resellerCategoryOptions
     : categories.filter(category => !isUncategorizedCategoryName(category.name)).map(category => ({
@@ -748,8 +786,13 @@ useEffect(() => {
         product.name.toLowerCase().includes(searchValue) ||
         product.description?.toLowerCase().includes(searchValue);
       const matchesPhoto = showWithoutPhoto || hasPhoto;
+      const resellerCategoryIds = config?.resellerCategorySettings?.categoryIds ?? [];
       const matchesCategory = activeCategory === 'all' || (channel === 'reseller'
-        ? getResellerProductCategoryKey(product, categories) === activeCategory
+        ? activeCategory === 'reseller:other'
+          ? !product.categoryId || !resellerCategoryIds.includes(product.categoryId)
+          : activeCategory.startsWith('owner:')
+            ? product.categoryId === activeCategory.slice('owner:'.length)
+            : getResellerProductCategoryKey(product, categories) === activeCategory
         : product.categoryId === activeCategory);
       const matchesAvailability = channel !== 'reseller'
         || matchesResellerAvailabilityFilter(product, availabilityFilter);
@@ -757,7 +800,7 @@ useEffect(() => {
     });
 
     return filteredProducts;
-  }, [activeCategory, availabilityFilter, catalogProducts, categories, channel, deferredSearch, isSuperOffersRoute, superOfferActive]);
+  }, [activeCategory, availabilityFilter, catalogProducts, categories, channel, config?.resellerCategorySettings?.categoryIds, deferredSearch, isSuperOffersRoute, superOfferActive]);
   const [loadedProductBatch, setLoadedProductBatch] = useState<{ items: PublicCatalogProduct[]; count: number } | null>(null);
   const visibleProductCount = loadedProductBatch?.items === filteredProducts ? loadedProductBatch.count : 48;
   const productRows = filteredProducts.slice(0, visibleProductCount);
@@ -771,8 +814,15 @@ useEffect(() => {
   const activeSupplierRound = channel === 'reseller'
     ? supplierRounds.find(round => round.id === selectedSupplierRoundId) ?? null
     : null;
-  const roundMinimumMessage = activeSupplierRound && cartTotal < activeSupplierRound.minimumOrderAmount
-    ? `El mínimo de esta ronda es ${formatCurrency(activeSupplierRound.minimumOrderAmount)}.`
+  const roundMinimumRequirements: string[] = [];
+  if (activeSupplierRound && activeSupplierRound.minimumOrderQuantity > cartItemCount) {
+    roundMinimumRequirements.push(`al menos ${activeSupplierRound.minimumOrderQuantity} unidades`);
+  }
+  if (activeSupplierRound && activeSupplierRound.minimumOrderAmount > cartTotal) {
+    roundMinimumRequirements.push(`${formatCurrency(activeSupplierRound.minimumOrderAmount)} por pedido`);
+  }
+  const roundMinimumMessage = roundMinimumRequirements.length
+    ? `Esta tanda requiere ${roundMinimumRequirements.join(' y ')}.`
     : null;
   const commercialRuleMessage = roundMinimumMessage ?? (resellerCatalog ? getCommercialRuleMessage(resellerCatalog) : null);
   const commercialRuleSatisfied = channel !== 'reseller' || !resellerCatalog
@@ -835,12 +885,18 @@ useEffect(() => {
       setResellerCatalog(unlocked);
       setResellerBuyingPolicy(buyingPolicy);
       setSupplierRounds(rounds);
-      setSelectedSupplierRoundId(rounds[0]?.id ?? null);
+      const requestedParams = new URLSearchParams(routeLocationRef.current.search);
+      const requestedRoundId = requestedParams.get('round');
+      const requestedProductId = productIdRef.current;
+      const preferredRound = rounds.find(round => round.id === requestedRoundId)
+        ?? rounds.find(round => requestedProductId && round.products.some(product => product.id === requestedProductId))
+        ?? (!requestedProductId ? rounds[0] : null);
+      setSelectedSupplierRoundId(preferredRound?.id ?? null);
       setResellerAccessCode(accessCodeInput.trim());
       sessionStorage.setItem(`catalog-reseller-session:${slug}`, accessCodeInput.trim());
       sessionStorage.setItem(`catalog-channel:${slug}`, 'reseller');
       setChannel('reseller');
-      setProducts(rounds[0] ? toRoundProducts(rounds[0]) : unlocked.products);
+      setProducts(preferredRound ? toRoundProducts(preferredRound) : unlocked.products);
       setCart([]);
       setActiveCategory('all');
       setAvailabilityFilter('all');
@@ -1666,7 +1722,8 @@ if (loading) {
           {featuredProducts.length > 0 && <a href="#catalog-section-all" className="flex min-h-24 flex-col justify-center rounded-2xl bg-[var(--brand-soft)] p-5 text-[var(--brand-strong)] transition-transform hover:-translate-y-0.5"><span className="text-xs font-bold uppercase tracking-wider">Selección de temporada</span><span className="mt-1 text-lg font-black">Elegidos para vos</span><span className="mt-1 text-sm">Descubrí los productos destacados.</span></a>}
           {offerProducts.length > 0 && <a href="#catalog-section-offers" className="flex min-h-24 flex-col justify-center rounded-2xl bg-[var(--action-bg)] p-5 text-[var(--action-ink)] transition-transform hover:-translate-y-0.5"><span className="text-xs font-bold uppercase tracking-wider">Por tiempo limitado</span><span className="mt-1 text-lg font-black">Ofertas relámpago</span><span className="mt-1 text-sm">Hasta {maxOfferDiscount}% de descuento.</span></a>}
         </section>}
-        {!isSuperOffersRoute && channel !== 'reseller' && visibleSections.find(section => section.id === 'categories')?.visible && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
+        {!isSuperOffersRoute && ((channel !== 'reseller' && visibleSections.find(section => section.id === 'categories')?.visible)
+          || (channel === 'reseller' && config?.resellerCategorySettings?.mode === 'categories')) && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
           <h2 className="mb-4 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.categories}</h2>
           <div className="relative">
             {categoryCanScrollLeft && <button type="button" aria-label="Desplazar categorías a la izquierda" onClick={() => categoryStripRef.current?.scrollBy({ left: -Math.max(260, Math.floor((categoryStripRef.current?.clientWidth ?? 400) * 0.72)), behavior: 'smooth' })} className="absolute left-0 top-6 z-10 hidden size-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)]/95 text-2xl font-bold shadow-lg md:grid">‹</button>}

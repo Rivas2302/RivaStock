@@ -196,6 +196,8 @@ export interface ResellerSupplierOrderRound {
   audienceCodeHash?: string | null;
   closesAt: string;
   minimumOrderAmount: number;
+  minimumOrderQuantity: number;
+  supplierMinimumOrderAmount: number;
   status: ResellerSupplierRoundStatus;
   createdAt: string;
   updatedAt: string;
@@ -454,7 +456,14 @@ export interface PublicResellerSupplierRound {
   audienceName: string;
   closesAt: string;
   minimumOrderAmount: number;
+  minimumOrderQuantity: number;
   products: Array<Pick<PublicCatalogProduct, 'id' | 'name' | 'categoryId' | 'category' | 'salePrice' | 'imageUrl' | 'images'>>;
+}
+
+export interface ResellerCatalogSettings {
+  mode: 'all' | 'categories';
+  categoryIds: string[];
+  showOtherProducts: boolean;
 }
 
 export interface CatalogConfig {
@@ -478,6 +487,7 @@ export interface CatalogConfig {
   showStockQuantity: boolean;
   categoryPhotosEnabled?: boolean;
   categoryPhotoOverrides?: Record<string, string>;
+  resellerCategorySettings?: ResellerCatalogSettings | null;
   enabled: boolean;
   welcomeMessage: string;
   primaryColor: string;

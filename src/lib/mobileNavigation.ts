@@ -25,6 +25,7 @@ export const NAVIGATION_GROUPS = [
   { label: 'Dinero', paths: ['/caja', '/reportes', '/calculadora'] },
   { label: 'Herramientas', paths: ['/ia', '/ia/conocimientos', '/automatizaciones', '/trazabilidad', '/config'] },
   { label: 'Administración', paths: ['/plataforma'] },
+  { label: 'Súper ofertas', paths: ['/revendedores/ofertas'] },
 ] as const;
 
 export const DESKTOP_NAVIGATION_GROUPS = [
@@ -35,6 +36,7 @@ export const DESKTOP_NAVIGATION_GROUPS = [
   NAVIGATION_GROUPS[3],
   NAVIGATION_GROUPS[4],
   NAVIGATION_GROUPS[5],
+  { label: 'Súper ofertas', paths: ['/revendedores/ofertas'] },
 ] as const;
 
 export const QUICK_ACTIONS: Array<{ label: string; description: string; path: string; module: ModuleKey; businessModule: BusinessModuleKey; write?: boolean }> = [

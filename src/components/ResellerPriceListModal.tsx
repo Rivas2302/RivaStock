@@ -18,6 +18,7 @@ import {
   Power,
 } from 'lucide-react';
 import type {
+  CatalogConfig,
   Category,
   InventoryHolding,
   InventoryOwner,
@@ -28,9 +29,11 @@ import type {
   PriceListPricingMode,
   Product,
   ResellerSupplierList,
+  ResellerSupplierOrderRound,
   Supplier,
+  ResellerCatalogSettings,
 } from '../types';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   configureResellerPriceList,
   configureResellerPricingAdvisor,
@@ -38,6 +41,7 @@ import {
   loadResellerPriceList,
   loadResellerSupplierListPricing,
   loadResellerSupplierLists,
+  loadResellerSupplierRounds,
   saveResellerPriceList,
   saveResellerBuyingPolicy,
   saveResellerMarginRules,
@@ -381,7 +385,9 @@ export default function ResellerPriceListModal({
   onPendingImageCleanup,
 }: ResellerPriceListModalProps) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const [pageTab, setPageTab] = useState<ResellerPageTab>(() => {
+    if (location.pathname === '/revendedores/ofertas') return 'super-offers';
     const requestedTab = searchParams.get('tab');
     return RESELLER_PAGE_TABS.includes(requestedTab as ResellerPageTab) ? requestedTab as ResellerPageTab : 'summary';
   });
@@ -404,10 +410,25 @@ export default function ResellerPriceListModal({
   const [marginRulesSaveStatus, setMarginRulesSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [search, setSearch] = useState('');
   const [productListSourceFilter, setProductListSourceFilter] = useState('all');
-  const [priceListInclusionFilter, setPriceListInclusionFilter] = useState<'all' | 'included'>('all');
+  const [priceListInclusionFilter, setPriceListInclusionFilter] = useState<'all' | 'included' | 'excluded'>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [priceMinFilter, setPriceMinFilter] = useState('');
+  const [priceMaxFilter, setPriceMaxFilter] = useState('');
+  const [profitMinFilter, setProfitMinFilter] = useState('');
+  const [profitMaxFilter, setProfitMaxFilter] = useState('');
+  const [marginMinFilter, setMarginMinFilter] = useState('');
+  const [marginMaxFilter, setMarginMaxFilter] = useState('');
+  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'in_stock' | 'on_order' | 'out_of_stock'>('all');
+  const [withoutPhotoFilter, setWithoutPhotoFilter] = useState(false);
+  const [uncategorizedFilter, setUncategorizedFilter] = useState(false);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+  const [catalogConfig, setCatalogConfig] = useState<CatalogConfig | null>(null);
+  const [resellerCategorySettings, setResellerCategorySettings] = useState<ResellerCatalogSettings>({ mode: 'all', categoryIds: [], showOtherProducts: true });
+  const [catalogCategorySaveStatus, setCatalogCategorySaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [marginFilter, setMarginFilter] = useState<'all' | 'low'>('all');
   const [advisorFilter, setAdvisorFilter] = useState<ResellerPricingAdviceFilter>('all');
   const [supplierLists, setSupplierLists] = useState<ResellerSupplierList[]>([]);
+  const [supplierRounds, setSupplierRounds] = useState<ResellerSupplierOrderRound[]>([]);
   const [supplierPricingSummaries, setSupplierPricingSummaries] = useState<Record<string, SupplierPricingSummary>>({});
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
@@ -502,6 +523,10 @@ export default function ResellerPriceListModal({
   const [itemsDirty, setItemsDirty] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ url: string; fileName: string } | null>(null);
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
+  const [pdfExportScope, setPdfExportScope] = useState<'full' | 'filtered' | 'selected'>('filtered');
+  const [pdfExportFormat, setPdfExportFormat] = useState<'compact' | 'photos'>('compact');
+  const [pdfExportGrouped, setPdfExportGrouped] = useState(true);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -629,9 +654,10 @@ export default function ResellerPriceListModal({
           loaded = await loadResellerPriceList(ownerUid);
         }
         if (!loaded.list) throw new Error('No se pudo crear la lista de revendedores.');
-        const [loadedSupplierLists, loadedSuppliers] = await Promise.all([
+        const [loadedSupplierLists, loadedSuppliers, loadedCatalogConfigs] = await Promise.all([
           loadResellerSupplierLists(loaded.list.id),
           db.list<Supplier>('suppliers', ownerUid),
+          db.list<CatalogConfig>('catalog_configs', ownerUid),
         ]);
         const supplierListIds = loadedSupplierLists.map(supplierList => supplierList.id);
         const supplierPricingRows = await loadResellerSupplierListPricing(supplierListIds);
@@ -681,6 +707,15 @@ export default function ResellerPriceListModal({
         setAdvisorFilter('all');
         setMarginFilter('all');
         setSettingsExpanded(false);
+        const loadedCatalogConfig = loadedCatalogConfigs[0] ?? null;
+        setCatalogConfig(loadedCatalogConfig);
+        const savedCategorySettings = loadedCatalogConfig?.resellerCategorySettings;
+        setResellerCategorySettings({
+          mode: savedCategorySettings?.mode === 'categories' ? 'categories' : 'all',
+          categoryIds: Array.from(new Set((savedCategorySettings?.categoryIds ?? []).filter(id => categories.some(category => category.id === id)))),
+          showOtherProducts: savedCategorySettings?.showOtherProducts !== false,
+        });
+        setCatalogCategorySaveStatus('saved');
         setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
         setSupplierLists(loadedSupplierLists);
         setSupplierPricingSummaries(nextPricingSummaries);
@@ -701,6 +736,24 @@ export default function ResellerPriceListModal({
     void load();
     return () => { cancelled = true; };
   }, [canWrite, isOpen, ownerUid]);
+
+  useEffect(() => {
+    if (displayMode === 'page' && location.pathname === '/revendedores/ofertas') setPageTab('super-offers');
+  }, [displayMode, location.pathname]);
+
+  const saveResellerCatalogSettings = async () => {
+    if (!catalogConfig || !canWrite) return;
+    setCatalogCategorySaveStatus('saving');
+    try {
+      await db.update<CatalogConfig>('catalog_configs', catalogConfig.id, { resellerCategorySettings });
+      setCatalogConfig(current => current ? { ...current, resellerCategorySettings: { ...resellerCategorySettings, categoryIds: [...resellerCategorySettings.categoryIds] } } : current);
+      setCatalogCategorySaveStatus('saved');
+      showToast('Organización del catálogo guardada.', 'success');
+    } catch {
+      setCatalogCategorySaveStatus('error');
+      showToast('No se pudo guardar la organización del catálogo.', 'error');
+    }
+  };
 
   const persistSettings = useCallback(async (snapshot: ResellerSettingsSnapshot) => {
     if (!list || !canWrite) return;
@@ -804,6 +857,7 @@ export default function ResellerPriceListModal({
       product.name.toLocaleLowerCase('es-AR').includes(normalized)
       || product.category.toLocaleLowerCase('es-AR').includes(normalized)
       || (product.barcode ?? '').toLocaleLowerCase('es-AR').includes(normalized)
+      || ['sku', 'model', 'modelo', 'variant', 'variante', 'code', 'codigo'].some(key => String(product.customFields?.[key] ?? '').toLocaleLowerCase('es-AR').includes(normalized))
     ));
   }, [products, search]);
 
@@ -855,16 +909,56 @@ export default function ResellerPriceListModal({
   }, [pricingAdviceByProductId]);
 
   const visibleProducts = useMemo(() => (
-    searchMatchedProducts.filter(product => (
-      matchesResellerPricingAdviceFilter(pricingAdviceByProductId.get(product.id)?.status, advisorFilter)
-      && (marginFilter !== 'low' || marginSuggestionsByProductId.get(product.id)?.low === true)
-    ))
-  ), [advisorFilter, marginFilter, marginSuggestionsByProductId, pricingAdviceByProductId, searchMatchedProducts]);
+    searchMatchedProducts.filter(product => {
+      if (!matchesResellerPricingAdviceFilter(pricingAdviceByProductId.get(product.id)?.status, advisorFilter)) return false;
+      if (marginFilter === 'low' && marginSuggestionsByProductId.get(product.id)?.low !== true) return false;
+      const productCategory = categories.find(category => category.id === product.categoryId);
+      if (categoryFilter === 'uncategorized' && productCategory) return false;
+      if (categoryFilter !== 'all' && categoryFilter !== 'uncategorized' && product.categoryId !== categoryFilter) return false;
+      if (withoutPhotoFilter && (product.images?.some(Boolean) || product.imageUrl)) return false;
+      if (uncategorizedFilter && productCategory) return false;
+      const item = itemByProductId.get(product.id);
+      const resellerPrice = resolvePriceListPrice(product.salePrice, discount, item ?? { pricingMode: 'default', discountPercent: null, fixedPrice: null });
+      const minPrice = priceMinFilter.trim() ? Number(priceMinFilter) : null;
+      const maxPrice = priceMaxFilter.trim() ? Number(priceMaxFilter) : null;
+      if (minPrice !== null && Number.isFinite(minPrice) && resellerPrice < minPrice) return false;
+      if (maxPrice !== null && Number.isFinite(maxPrice) && resellerPrice > maxPrice) return false;
+      const economics = getResellerProductEconomics(product, holdings, holdingsEnabled);
+      const unitProfit = economics.purchaseCost === null ? null : resellerPrice - economics.purchaseCost;
+      const marginPercent = resellerPrice > 0 && unitProfit !== null ? unitProfit / resellerPrice * 100 : null;
+      const profitMin = profitMinFilter.trim() ? Number(profitMinFilter) : null;
+      const profitMax = profitMaxFilter.trim() ? Number(profitMaxFilter) : null;
+      const marginMin = marginMinFilter.trim() ? Number(marginMinFilter) : null;
+      const marginMax = marginMaxFilter.trim() ? Number(marginMaxFilter) : null;
+      if (profitMin !== null && Number.isFinite(profitMin) && (unitProfit === null || unitProfit < profitMin)) return false;
+      if (profitMax !== null && Number.isFinite(profitMax) && (unitProfit === null || unitProfit > profitMax)) return false;
+      if (marginMin !== null && Number.isFinite(marginMin) && (marginPercent === null || marginPercent < marginMin)) return false;
+      if (marginMax !== null && Number.isFinite(marginMax) && (marginPercent === null || marginPercent > marginMax)) return false;
+      if (availabilityFilter === 'in_stock' && (item?.availability === 'on_order' || product.stock <= 0)) return false;
+      if (availabilityFilter === 'on_order' && item?.availability !== 'on_order') return false;
+      if (availabilityFilter === 'out_of_stock' && (item?.availability === 'on_order' || product.stock > 0)) return false;
+      return true;
+    })
+  ), [advisorFilter, availabilityFilter, categories, categoryFilter, discount, holdings, holdingsEnabled, itemByProductId, marginFilter, marginMaxFilter, marginMinFilter, marginSuggestionsByProductId, priceMaxFilter, priceMinFilter, profitMaxFilter, profitMinFilter, pricingAdviceByProductId, searchMatchedProducts, uncategorizedFilter, withoutPhotoFilter]);
+
+  useEffect(() => {
+    if (!isOpen || supplierLists.length === 0) {
+      setSupplierRounds([]);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(supplierLists.map(supplierList => loadResellerSupplierRounds(supplierList.id).catch(() => [])))
+      .then(roundLists => { if (!cancelled) setSupplierRounds(roundLists.flat()); });
+    return () => { cancelled = true; };
+  }, [isOpen, supplierLists]);
 
   const supplierListBySupplierId = useMemo(
     () => new Map(supplierLists.map((supplierList) => [supplierList.supplierId, supplierList])),
     [supplierLists],
   );
+  const openSupplierRoundCount = supplierRounds.filter(round => round.status === 'open' && Date.parse(round.closesAt) > Date.now()).length;
+  const pendingSupplierPayments = supplierRounds.flatMap(round => round.orders).filter(order => !order.paidAt);
+  const pendingSupplierPaymentTotal = pendingSupplierPayments.reduce((total, order) => total + order.resellerTotal, 0);
   const supplierNameByListId = useMemo(() => {
     const supplierNameById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
     return new Map(supplierLists.map((supplierList) => [
@@ -887,7 +981,9 @@ export default function ResellerPriceListModal({
     supplierCategoryMappings,
   ), [categories, products, supplierCategoryMappings, supplierLists, suppliers]);
   const resellerVisibleProducts = useMemo(() => visibleProducts.filter(product => {
-    if (priceListInclusionFilter === 'included' && !itemByProductId.has(product.id)) return false;
+    const included = itemByProductId.has(product.id);
+    if (priceListInclusionFilter === 'included' && !included) return false;
+    if (priceListInclusionFilter === 'excluded' && included) return false;
     if (productListSourceFilter === 'all') return true;
     const supplierListId = itemByProductId.get(product.id)?.supplierListId ?? supplierListByProductId.get(product.id)?.id;
     return productListSourceFilter === 'stock' ? !supplierListId : supplierListId === productListSourceFilter;
@@ -899,6 +995,9 @@ export default function ResellerPriceListModal({
   const selectedPageCount = visiblePricePageProducts.filter(product => selectedPriceProductIds.has(product.id)).length;
   const allPricePageSelected = visiblePricePageProducts.length > 0 && selectedPageCount === visiblePricePageProducts.length;
   const selectedPriceProducts = resellerVisibleProducts.filter(product => selectedPriceProductIds.has(product.id));
+  const exportableFilteredCount = resellerVisibleProducts.filter(product => itemByProductId.has(product.id)).length;
+  const exportableSelectedCount = selectedPriceProducts.filter(product => itemByProductId.has(product.id)).length;
+  const pdfExportProductCount = pdfExportScope === 'full' ? items.length : pdfExportScope === 'filtered' ? exportableFilteredCount : exportableSelectedCount;
   const selectedProductIds = selectedPriceProducts.map(product => product.id);
   const selectedMarginApplyIds = selectedProductIds.filter(productId => marginSuggestionsByProductId.has(productId));
   const lowMarginProductCount = Array.from(marginSuggestionsByProductId.values()).filter(suggestion => suggestion.low).length;
@@ -1842,7 +1941,7 @@ export default function ResellerPriceListModal({
   const [supplierExtensionHelpVisible, setSupplierExtensionHelpVisible] = useState(false);
 
   const resellerDialogOpen = accessCodeDialogOpen || supplierExtensionHelpOpen || supplierImportConfirmation !== null
-    || bulkConfirmation !== null || marginApplyConfirmation !== null || removalSupplier !== null || pdfPreview !== null;
+    || bulkConfirmation !== null || marginApplyConfirmation !== null || removalSupplier !== null || pdfPreview !== null || pdfExportOpen;
   const hideResellerBottomNavigation = displayMode === 'page'
     && (Boolean(editingPriceProduct) || selectedPriceProducts.length > 0 || resellerDialogOpen);
   useMobileAppChrome({ hideHeader: false, hideBottomNav: hideResellerBottomNavigation });
@@ -2120,13 +2219,31 @@ export default function ResellerPriceListModal({
           if (entry.action === 'unchanged') continue;
           const existing = entry.existingProduct;
           const sourceCategory = entry.row.category.trim();
-          const resolvedCategory = resolveSupplierImportCategory(sourceCategory, entry.row.targetCategoryId, categories);
+          const sourceName = entry.row.name.trim();
+          const previousSourceName = String(existing?.customFields?.supplierImportSourceName ?? '').trim();
+          const preserveCustomName = Boolean(existing && (
+            existing.customFields?.supplierImportCustomName === true
+            || !previousSourceName
+            || existing.name.trim().toLocaleLowerCase('es-AR') !== previousSourceName.toLocaleLowerCase('es-AR')
+          ));
+          const previousImportCategoryId = String(existing?.customFields?.supplierImportCategoryId ?? '').trim();
+          const preserveCustomCategory = Boolean(existing && (
+            existing.customFields?.supplierImportCustomCategory === true
+            || (previousImportCategoryId && existing.categoryId !== previousImportCategoryId)
+          ));
+          const resolvedCategory = preserveCustomCategory
+            ? { categoryId: existing!.categoryId, category: existing!.category }
+            : resolveSupplierImportCategory(sourceCategory, entry.row.targetCategoryId, categories);
           const now = new Date().toISOString();
           const photoBrandFields = supplierPhotoReviewFields(entry.row.photoBrandReview, Boolean(supplierImportPhotoFiles[entry.row.sourceRow]));
           const customFields = { ...(existing?.customFields ?? {}), ...(photoBrandFields ?? {}) };
           Object.assign(customFields, clearSupplierProductNoPriceStatus(customFields, editingSupplierId));
           customFields.supplierImportSupplierId = editingSupplierId;
+          customFields.supplierImportSourceName = sourceName;
+          customFields.supplierImportCategoryId = resolvedCategory.categoryId;
           customFields.supplierImportSourceCategory = sourceCategory;
+          if (preserveCustomName) customFields.supplierImportCustomName = true;
+          if (preserveCustomCategory) customFields.supplierImportCustomCategory = true;
           if (supplierRivaCatalogSource) customFields.rivaCatalogSupplierImport = true;
           else delete customFields.rivaCatalogSupplierImport;
           if (entry.row.brand) customFields.supplierBrand = entry.row.brand.slice(0, 100);
@@ -2134,7 +2251,7 @@ export default function ResellerPriceListModal({
           const product: Product = {
             ...(existing ?? {} as Product),
             id: resolvedIds.get(entry.row.sourceRow)!,
-            name: entry.row.name.trim(),
+            name: preserveCustomName ? existing!.name : sourceName,
             categoryId: resolvedCategory.categoryId,
             category: resolvedCategory.category,
             purchasePrice: existing?.purchasePrice ?? 0,
@@ -2392,7 +2509,12 @@ export default function ResellerPriceListModal({
     }
   };
 
-  const handlePdf = async (action: 'preview' | 'download') => {
+  const handlePdf = async (
+    action: 'preview' | 'download',
+    scope: 'full' | 'filtered' | 'selected' = pdfExportScope,
+    format: 'compact' | 'photos' = pdfExportFormat,
+    groupByCategory = pdfExportGrouped,
+  ) => {
     if (!list || generating || items.length === 0) return;
     const useNativePdfPreview = action === 'preview' && window.matchMedia(
       '(max-width: 767px), (hover: none) and (pointer: coarse)',
@@ -2401,21 +2523,50 @@ export default function ResellerPriceListModal({
     setGenerating(true);
     try {
       const draftList = { ...list, defaultDiscountPercent: discount };
+      const listedProducts = buildPriceListProducts(products, draftList, items);
+      const exportProducts = scope === 'full'
+        ? listedProducts
+        : buildPriceListProducts(
+          scope === 'filtered'
+            ? resellerVisibleProducts.filter(product => itemByProductId.has(product.id))
+            : selectedPriceProducts.filter(product => itemByProductId.has(product.id)),
+          draftList,
+          items,
+        );
       const commercialNotice = getCommercialRuleMessage({
         minimumRule,
         minimumOrderAmount,
         minimumOrderQuantity,
       });
+      const productUrlByProductId = publicCatalogUrl && publicEnabled
+        ? exportProducts.reduce<Record<string, string>>((urls, product) => {
+          const catalogUrl = new URL(publicCatalogUrl);
+          const catalogBase = `${catalogUrl.origin}${catalogUrl.pathname.replace(/\/+$/, '')}/`;
+          const productUrl = new URL(encodeURIComponent(product.id), catalogBase);
+          productUrl.searchParams.set('channel', 'reseller');
+          const supplierListId = itemByProductId.get(product.id)?.supplierListId ?? supplierListByProductId.get(product.id)?.id;
+          const round = supplierRounds.find(candidate => candidate.supplierListId === supplierListId && candidate.status === 'open' && Date.parse(candidate.closesAt) > Date.now());
+          if (round) productUrl.searchParams.set('round', round.id);
+          urls[product.id] = productUrl.toString();
+          return urls;
+        }, {})
+        : undefined;
       const pdf = await createPriceListPdf({
-        products: buildPriceListProducts(products, draftList, items),
+        products: exportProducts,
         categories,
         businessName,
         currencySymbol,
         inventoryOwners,
-        title: 'Lista de precios para revendedores',
-        fileNamePrefix: 'lista-revendedores',
+        title: format === 'photos' ? 'Catálogo para revendedores' : 'Lista de precios para revendedores',
+        fileNamePrefix: format === 'photos' ? 'catalogo-revendedores' : 'lista-revendedores',
         availabilityByProductId: buildAvailabilityMap(items),
         commercialNotice,
+        includeInventoryOwner: false,
+        includeInternalNotes: false,
+        includePhotos: format === 'photos',
+        includeCode: false,
+        productUrlByProductId,
+        groupByCategory,
       });
       const url = URL.createObjectURL(pdf.blob);
       if (action === 'preview') {
@@ -2559,8 +2710,8 @@ export default function ResellerPriceListModal({
                 </button>
                 <button type="button" onClick={() => setPageTab('orders')} className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4 text-left transition-colors hover:bg-[var(--surface-2)]">
                   <span className="text-sm font-semibold text-[var(--ink)]">Encargos</span>
-                  <span className="mt-2 block text-2xl font-semibold tabular-nums text-[var(--ink)]">{supplierLists.length} <span className="text-sm font-normal text-[var(--ink-muted)]">listas para abrir</span></span>
-                  <span className="mt-1 block text-xs text-[var(--ink-muted)]">Cuando abras uno, tus revendedores piden hasta el cierre.</span>
+                  <span className="mt-2 block text-2xl font-semibold tabular-nums text-[var(--ink)]">{openSupplierRoundCount} <span className="text-sm font-normal text-[var(--ink-muted)]">tandas abiertas</span></span>
+                  <span className="mt-1 block text-xs text-[var(--ink-muted)]">{pendingSupplierPayments.length} pagos pendientes · {formatCurrency(pendingSupplierPaymentTotal)}</span>
                 </button>
               </div>
             </div>
@@ -2589,8 +2740,8 @@ export default function ResellerPriceListModal({
           </section>}
           {displayMode === 'page' && pageTab === 'orders' && <section role="tabpanel" aria-label="Encargos" className="space-y-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div><h2 className="text-xl font-semibold text-[var(--ink)]">Encargos</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Tus revendedores piden y pagan antes del cierre; vos hacés un solo pedido al proveedor.</p></div>
-              {supplierLists.length > 0 && <button type="button" onClick={() => setPageTab('providers')} className="min-h-10 self-start rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Ver proveedores</button>}
+              <div><h2 className="text-xl font-semibold text-[var(--ink)]">Encargos</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">“Por pedido” describe cómo conseguís un producto; una tanda de encargos reúne pedidos de varios revendedores para comprar al proveedor al cierre.</p></div>
+              {supplierLists.length > 0 && <button type="button" onClick={() => setPageTab('providers')} className="min-h-10 self-start rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Abrir tanda de pedidos</button>}
             </div>
             {supplierLists.length === 0 ? <div className="rounded-xl border border-dashed border-[var(--line)] p-6 text-center">
               <p className="font-semibold text-[var(--ink)]">No hay encargos abiertos</p>
@@ -2644,7 +2795,42 @@ export default function ResellerPriceListModal({
                 </div>
                 <div className="flex min-h-16 items-center justify-between gap-4 py-3">
                   <div><p className="text-sm font-semibold">Lista en PDF</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Para mandar por WhatsApp a quien no usa el catálogo.</p></div>
-                  <div className="flex shrink-0 gap-2"><button type="button" onClick={() => void handlePdf('preview')} disabled={generating || items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Ver</button><button type="button" onClick={() => void handlePdf('download')} disabled={generating || items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Descargar</button></div>
+                  <div className="flex shrink-0 gap-2"><button type="button" onClick={() => setPdfExportOpen(true)} disabled={items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Exportar</button></div>
+                </div>
+              </div>
+            </section>
+
+            <section aria-labelledby="reseller-settings-category-title" className="grid gap-5 border-b border-[var(--line)] py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-12">
+              <div>
+                <h3 id="reseller-settings-category-title" className="text-base font-bold">Organización del catálogo</h3>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">Elegí si los revendedores ven todo junto o navegan por tus categorías de la tienda.</p>
+              </div>
+              <div className="space-y-4">
+                <div role="group" aria-label="Modo de categorías para revendedores" className="flex flex-wrap gap-2">
+                  {([['all', 'Todo junto'], ['categories', 'Por categorías']] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={resellerCategorySettings.mode === mode} disabled={!canWrite} onClick={() => setResellerCategorySettings(current => ({ ...current, mode }))} className={cn('min-h-10 rounded-lg border px-3 text-sm font-semibold', resellerCategorySettings.mode === mode ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'border-[var(--line)] text-[var(--ink-muted)]')}>{label}</button>)}
+                </div>
+                {resellerCategorySettings.mode === 'categories' && <>
+                  <p className="text-xs text-[var(--ink-muted)]">Elegí las categorías que se muestran y ordenalas. Los productos sin una de estas categorías quedan en Todos.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {categories.map(category => <label key={category.id} className="flex min-h-11 items-center gap-2 rounded-lg border border-[var(--line)] px-3 text-sm">
+                      <input type="checkbox" checked={resellerCategorySettings.categoryIds.includes(category.id)} disabled={!canWrite} onChange={() => setResellerCategorySettings(current => ({ ...current, categoryIds: current.categoryIds.includes(category.id) ? current.categoryIds.filter(id => id !== category.id) : [...current.categoryIds, category.id] }))} className="size-4 accent-[var(--accent)]" />
+                      <span className="min-w-0 flex-1 truncate">{category.name}</span>
+                    </label>)}
+                  </div>
+                  {resellerCategorySettings.categoryIds.length > 0 && <div className="space-y-2">
+                    <p className="text-xs font-semibold text-[var(--ink-muted)]">Orden visible</p>
+                    {resellerCategorySettings.categoryIds.map((categoryId, index) => <div key={categoryId} className="flex min-h-10 items-center gap-2 rounded-lg bg-[var(--surface-2)] px-3 text-sm">
+                      <span className="min-w-0 flex-1 truncate">{categories.find(category => category.id === categoryId)?.name ?? 'Categoría'}</span>
+                      <button type="button" aria-label={`Mover ${categories.find(category => category.id === categoryId)?.name ?? 'categoría'} hacia arriba`} disabled={!canWrite || index === 0} onClick={() => setResellerCategorySettings(current => { const next = [...current.categoryIds]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return { ...current, categoryIds: next }; })} className="grid size-8 place-items-center rounded-md border border-[var(--line)] disabled:opacity-40">↑</button>
+                      <button type="button" aria-label={`Mover ${categories.find(category => category.id === categoryId)?.name ?? 'categoría'} hacia abajo`} disabled={!canWrite || index === resellerCategorySettings.categoryIds.length - 1} onClick={() => setResellerCategorySettings(current => { const next = [...current.categoryIds]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return { ...current, categoryIds: next }; })} className="grid size-8 place-items-center rounded-md border border-[var(--line)] disabled:opacity-40">↓</button>
+                    </div>)}
+                  </div>}
+                  <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={resellerCategorySettings.showOtherProducts} disabled={!canWrite} onChange={event => setResellerCategorySettings(current => ({ ...current, showOtherProducts: event.target.checked }))} className="mt-1 size-4 accent-[var(--accent)]" /><span>Mostrar también “Otros productos”</span></label>
+                </>}
+                {!catalogConfig && <p role="note" className="text-xs text-amber-700 dark:text-amber-300">Configurá primero el catálogo público para guardar esta organización.</p>}
+                <div className="flex flex-wrap items-center gap-3">
+                  <button type="button" onClick={() => void saveResellerCatalogSettings()} disabled={!canWrite || !catalogConfig || catalogCategorySaveStatus === 'saving'} className="min-h-10 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{catalogCategorySaveStatus === 'saving' ? 'Guardando…' : 'Guardar organización'}</button>
+                  <p role="status" className="text-xs text-[var(--ink-muted)]">{catalogCategorySaveStatus === 'error' ? 'No se pudo guardar.' : catalogCategorySaveStatus === 'saved' ? 'Cambios guardados.' : ''}</p>
                 </div>
               </div>
             </section>
@@ -3084,16 +3270,58 @@ export default function ResellerPriceListModal({
                   <summary aria-label="Más opciones de la lista de precios" className="flex min-h-10 min-w-10 cursor-pointer list-none items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-xl font-semibold text-[var(--ink)] [&::-webkit-details-marker]:hidden">⋯</summary>
                   <div className="absolute right-0 top-full z-30 mt-1 min-w-52 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-1 shadow-xl">
                     <button type="button" onClick={() => onCreateProduct()} disabled={!canWrite} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Crear producto por pedido</button>
-                    <button type="button" onClick={() => void handlePdf('preview')} disabled={generating || items.length === 0} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Ver PDF</button>
-                    <button type="button" onClick={() => void handlePdf('download')} disabled={generating || items.length === 0} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Descargar PDF</button>
+                    <button type="button" onClick={() => setPdfExportOpen(true)} disabled={items.length === 0} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Exportar PDF</button>
                   </div>
                 </details>
+                <button type="button" onClick={() => setPdfExportOpen(true)} disabled={items.length === 0} className="hidden min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)] disabled:opacity-50 sm:inline-flex"><Download size={17} /> Exportar</button>
                 <button type="button" onClick={() => onCreateProduct()} disabled={!canWrite}
                   className="hidden min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50 sm:inline-flex">
                   <PackagePlus size={17} /> Crear producto por pedido
                 </button>
               </div>
 
+              <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+                <label className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-xs font-semibold text-[var(--ink-muted)]">
+                  <span className="shrink-0">Categoría</span>
+                  <select aria-label="Filtrar por categoría" value={categoryFilter} onChange={event => { setCategoryFilter(event.target.value); setPriceProductPage(0); }} className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ink)] outline-none">
+                    <option value="all">Todas las categorías</option>
+                    {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    <option value="uncategorized">Sin categoría</option>
+                  </select>
+                </label>
+                <button type="button" aria-expanded={advancedFiltersOpen} onClick={() => setAdvancedFiltersOpen(value => !value)} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">{advancedFiltersOpen ? 'Ocultar más filtros' : 'Más filtros'}</button>
+              </div>
+              {advancedFiltersOpen && <div className="grid gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 sm:grid-cols-2 xl:grid-cols-4">
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Precio revendedor desde<input type="number" min="0" value={priceMinFilter} onChange={event => { setPriceMinFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Precio revendedor hasta<input type="number" min="0" value={priceMaxFilter} onChange={event => { setPriceMaxFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Ganancia por unidad desde<input type="number" min="0" value={profitMinFilter} onChange={event => { setProfitMinFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Ganancia por unidad hasta<input type="number" min="0" value={profitMaxFilter} onChange={event => { setProfitMaxFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Margen desde %<input type="number" min="0" value={marginMinFilter} onChange={event => { setMarginMinFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Margen hasta %<input type="number" min="0" value={marginMaxFilter} onChange={event => { setMarginMaxFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Disponibilidad<select value={availabilityFilter} onChange={event => { setAvailabilityFilter(event.target.value as typeof availabilityFilter); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]"><option value="all">Cualquiera</option><option value="in_stock">Con stock</option><option value="on_order">Por pedido</option><option value="out_of_stock">Agotado</option></select></label>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="flex min-h-10 items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={withoutPhotoFilter} onChange={event => setWithoutPhotoFilter(event.target.checked)} className="size-4 accent-[var(--accent)]" />Sin foto</label>
+                  <label className="flex min-h-10 items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={uncategorizedFilter} onChange={event => setUncategorizedFilter(event.target.checked)} className="size-4 accent-[var(--accent)]" />Sin categoría</label>
+                  <button type="button" onClick={() => { setCategoryFilter('all'); setPriceMinFilter(''); setPriceMaxFilter(''); setProfitMinFilter(''); setProfitMaxFilter(''); setMarginMinFilter(''); setMarginMaxFilter(''); setAvailabilityFilter('all'); setWithoutPhotoFilter(false); setUncategorizedFilter(false); setPriceListInclusionFilter('all'); setProductListSourceFilter('all'); setAdvisorFilter('all'); setMarginFilter('all'); setSearch(''); setPriceProductPage(0); }} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold">Limpiar filtros</button>
+                </div>
+              </div>}
+              {pdfExportOpen && <section aria-label="Opciones de exportación" className="grid gap-3 rounded-xl border border-[var(--accent)] bg-[var(--surface-1)] p-4 md:grid-cols-[1.2fr_1fr_auto] md:items-end">
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Qué productos incluir<select value={pdfExportScope} onChange={event => setPdfExportScope(event.target.value as typeof pdfExportScope)} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 text-sm text-[var(--ink)]">
+                  <option value="full">Lista completa · {items.length} productos</option>
+                  <option value="filtered">Resultados filtrados · {exportableFilteredCount} en la lista</option>
+                  <option value="selected">Solo seleccionados · {exportableSelectedCount}</option>
+                </select></label>
+                <fieldset className="flex flex-wrap gap-2">
+                  <legend className="mb-1 text-xs font-semibold text-[var(--ink-muted)]">Formato</legend>
+                  {([['compact', 'Lista compacta'], ['photos', 'Catálogo con fotos']] as const).map(([format, label]) => <button key={format} type="button" aria-pressed={pdfExportFormat === format} onClick={() => setPdfExportFormat(format)} className={cn('min-h-9 rounded-lg border px-3 text-xs font-semibold', pdfExportFormat === format ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'border-[var(--line)] text-[var(--ink-muted)]')}>{label}</button>)}
+                  <label className="flex min-h-9 items-center gap-2 px-2 text-xs font-semibold"><input type="checkbox" checked={pdfExportGrouped} onChange={event => setPdfExportGrouped(event.target.checked)} className="size-4 accent-[var(--accent)]" />Agrupar por categoría</label>
+                </fieldset>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setPdfExportOpen(false)} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Cerrar</button>
+                  <button type="button" onClick={() => void handlePdf('preview')} disabled={generating || pdfExportProductCount === 0} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">{generating ? 'Preparando…' : 'Ver PDF'}</button>
+                  <button type="button" onClick={() => void handlePdf('download')} disabled={generating || pdfExportProductCount === 0} className="min-h-10 rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{generating ? 'Preparando…' : 'Descargar'}</button>
+                </div>
+              </section>}
               {categories.length > 0 && supplierCategoryReviewGroups.length > 0 && <section className="flex flex-col gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-[var(--ink)]">Categorías de proveedores</p>
@@ -3128,6 +3356,11 @@ export default function ResellerPriceListModal({
                   onClick={() => { setPriceListInclusionFilter('included'); setAdvisorFilter('all'); setMarginFilter('all'); setPriceProductPage(0); }}
                   className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'included' && advisorFilter === 'all' && marginFilter === 'all' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   En la lista · {items.length}
+                </button>
+                <button type="button" aria-pressed={priceListInclusionFilter === 'excluded'}
+                  onClick={() => { setPriceListInclusionFilter('excluded'); setAdvisorFilter('all'); setMarginFilter('all'); setPriceProductPage(0); }}
+                  className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'excluded' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                  Fuera de la lista · {visibleProducts.filter(product => !itemByProductId.has(product.id)).length}
                 </button>
                 <button type="button" aria-pressed={marginFilter === 'low'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('all'); setMarginFilter('low'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', marginFilter === 'low' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   Ganancia baja · {lowMarginProductCount}
@@ -3190,8 +3423,8 @@ export default function ResellerPriceListModal({
                           <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink-muted)]">{formatCurrency(product.salePrice)}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-[var(--ink)]">{formatCurrency(resellerPrice)}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink)]">{profit === null ? '—' : formatCurrency(profit)}</td>
-                          <td className="px-3 py-3"><div className="space-y-1"><span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold', item ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{item ? 'En la lista' : 'Fuera de la lista'}</span><p className="text-xs text-[var(--ink-muted)]">{item?.availability === 'on_order' ? 'Por pedido' : item ? 'Disponible' : statusLabel}</p>{item && marginSuggestion?.low && <p className="max-w-52 text-xs text-[var(--ink-muted)]">Sugerido: {formatCurrency(marginSuggestion.suggestedResellerPrice)} (ganás {formatCurrency(marginSuggestion.suggestedResellerPrice - marginSuggestion.cost)})</p>}</div></td>
-                          <td className="space-y-1 px-3 py-3 text-right"><button type="button" onClick={() => setEditingPriceProductId(expanded ? null : product.id)} disabled={!item || !canWrite || bulkBusy} aria-expanded={expanded} className="min-h-8 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">{expanded ? 'Cerrar' : 'Editar'}</button>{item && marginSuggestion?.low && <button type="button" onClick={() => requestMarginPriceApply([product.id])} disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved'} className="block min-h-8 rounded-lg bg-[var(--primary)] px-2 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-50">Aplicar</button>}</td>
+                          <td className="px-3 py-3"><div className="space-y-1"><span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold', item ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{item ? 'En la lista' : 'Fuera de la lista'}</span><p className="text-xs text-[var(--ink-muted)]">{item?.availability === 'on_order' ? 'Por pedido' : item ? 'Disponible' : statusLabel}</p>{advice && advice.status !== 'balanced' && <p title={advice.message} className="max-w-52 text-[11px] leading-snug text-[var(--ink-muted)]">{advice.message}</p>}{item && marginSuggestion?.low && <p className="max-w-52 text-xs text-[var(--ink-muted)]">Sugerido: {formatCurrency(marginSuggestion.suggestedResellerPrice)} (ganás {formatCurrency(marginSuggestion.suggestedResellerPrice - marginSuggestion.cost)})</p>}</div></td>
+                          <td className="space-y-1 px-3 py-3 text-right"><button type="button" onClick={() => onEditCatalogProduct(product)} disabled={!canWrite || bulkBusy} className="min-h-8 rounded-lg border border-[var(--line)] px-2 text-[11px] font-semibold text-[var(--ink)] disabled:opacity-45">Editar ficha</button>{item ? <button type="button" onClick={() => setEditingPriceProductId(expanded ? null : product.id)} disabled={!canWrite || bulkBusy} aria-expanded={expanded} className="block min-h-8 w-full rounded-lg border border-[var(--line)] px-2 text-[11px] font-semibold text-[var(--ink)] disabled:opacity-45">{expanded ? 'Cerrar precio' : 'Editar precio'}</button> : <button type="button" onClick={() => toggleProduct(product)} disabled={!canWrite || bulkBusy} className="block min-h-8 w-full rounded-lg bg-[var(--primary)] px-2 text-[11px] font-semibold text-[var(--primary-ink)] disabled:opacity-50">Agregar a la lista</button>}{item && marginSuggestion?.low && <button type="button" onClick={() => requestMarginPriceApply([product.id])} disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved'} className="block min-h-8 w-full rounded-lg bg-[var(--primary)] px-2 text-[11px] font-semibold text-[var(--primary-ink)] disabled:opacity-50">Aplicar</button>}</td>
                         </tr>
                         {expanded && item && <tr className="border-b border-[var(--line)] bg-[var(--surface-2)]/60"><td colSpan={8} className="px-4 py-4">
                           <div className="grid gap-3 sm:grid-cols-3">
@@ -3240,6 +3473,12 @@ export default function ResellerPriceListModal({
                         <span className="whitespace-nowrap">{item ? 'En la lista' : 'Fuera'}</span>
                         {item && <span className="truncate">· {item.availability === 'on_order' ? 'Por pedido' : 'Disponible'}</span>}
                       </p>
+                      <div className="mt-3 grid grid-cols-2 gap-2 pl-7">
+                        <button type="button" onClick={() => onEditCatalogProduct(product)} disabled={!canWrite || bulkBusy} className="min-h-9 rounded-lg border border-[var(--line)] px-2 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">Editar ficha</button>
+                        {item
+                          ? <button type="button" onClick={() => setEditingPriceProductId(product.id)} disabled={!canWrite || bulkBusy} className="min-h-9 rounded-lg border border-[var(--line)] px-2 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">Editar precio</button>
+                          : <button type="button" onClick={() => toggleProduct(product)} disabled={!canWrite || bulkBusy} className="min-h-9 rounded-lg bg-[var(--primary)] px-2 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-50">Agregar a la lista</button>}
+                      </div>
                       {item && marginSuggestion?.low && <div className="mt-2 flex items-center justify-between gap-2 pl-7">
                         <p className="min-w-0 text-xs text-[var(--ink-muted)]">Sugerido: {formatCurrency(marginSuggestion.suggestedResellerPrice)} · ganás {formatCurrency(marginSuggestion.suggestedResellerPrice - marginSuggestion.cost)}</p>
                         <button type="button" onClick={() => requestMarginPriceApply([product.id])} disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved'} className="min-h-8 shrink-0 rounded-lg bg-[var(--primary)] px-2.5 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-50">Aplicar</button>
