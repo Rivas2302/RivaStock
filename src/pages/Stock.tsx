@@ -59,6 +59,7 @@ import {
   AlertTriangle,
   PackageCheck,
   ArrowRightLeft,
+  Clock3,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import ProductThumbnail from '../components/stock/ProductThumbnail';
@@ -118,6 +119,49 @@ function isProductOnOrder(product: Product): boolean {
   return fields.onOrder === true || value.includes('pedido') || value.includes('order');
 }
 
+interface StockMovementSummary {
+  lastSaleDate: Date | null;
+  soldLast30Days: number;
+  soldLast60Days: number;
+  soldLast90Days: number;
+}
+
+interface StockMovementRow extends StockMovementSummary {
+  product: Product;
+  ownerLabel: string;
+  stock: number;
+  unitsWithCost: number;
+  unitsWithoutCost: number;
+  capitalAtCost: number;
+  grossPotential: number;
+  daysInactive: number | null;
+}
+
+function parseStockCalendarDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (match) {
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    if (date.getFullYear() !== Number(match[1]) || date.getMonth() !== Number(match[2]) - 1 || date.getDate() !== Number(match[3])) return null;
+    return date;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
+
+function stockCalendarDateKey(date: Date): string {
+  return String(date.getFullYear()).padStart(4, '0') + '-'
+    + String(date.getMonth() + 1).padStart(2, '0') + '-'
+    + String(date.getDate()).padStart(2, '0');
+}
+
+function stockCalendarDayNumber(date: Date): number {
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000);
+}
+
+function formatStockCalendarDate(date: Date): string {
+  return date.toLocaleDateString('es-AR');
+}
+
 export default function Stock() {
   const {
     user, isOwner, refetchToken, holdingsEnabled, inventoryAccessError,
@@ -142,6 +186,14 @@ export default function Stock() {
   const [resellerPriceListOpen, setResellerPriceListOpen] = useState(false);
   const holdingsByProduct = useMemo(() => indexHoldingsByProduct(holdings), [holdings]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [movementHistorySales, setMovementHistorySales] = useState<Sale[] | null>(null);
+  const [movementHistoryLoading, setMovementHistoryLoading] = useState(false);
+  const movementHistoryLoadRef = useRef(false);
+  const [slowMovementOpen, setSlowMovementOpen] = useState(false);
+  const [slowMovementThreshold, setSlowMovementThreshold] = useState<'30' | '60' | '90' | 'never'>('30');
+  const [slowMovementQuery, setSlowMovementQuery] = useState('');
+  const [slowMovementCategory, setSlowMovementCategory] = useState('all');
+  const [slowMovementSort, setSlowMovementSort] = useState<'capital' | 'oldest'>('capital');
   const [categories, setCategories] = useState<Category[]>([]);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,6 +215,37 @@ export default function Stock() {
     refetchToken,
     allowedInventoryOwnerIds,
   );
+  const loadMovementHistory = useCallback(async () => {
+    setSlowMovementOpen(true);
+    if (!user || movementHistorySales !== null || movementHistoryLoadRef.current) return;
+    movementHistoryLoadRef.current = true;
+    setMovementHistoryLoading(true);
+    try {
+      setMovementHistorySales(await db.list<Sale>('sales', user.uid));
+    } catch (error) {
+      console.error('[Stock] movement history error:', error);
+      showToast('No se pudo cargar el historial de ventas para el análisis.', 'error');
+    } finally {
+      movementHistoryLoadRef.current = false;
+      setMovementHistoryLoading(false);
+    }
+  }, [movementHistorySales, user]);
+
+  const closeSlowMovement = useCallback(() => {
+    setSlowMovementOpen(false);
+    setMovementHistorySales(null);
+    const params = new URLSearchParams(location.search);
+    if (params.get('view') === 'slow') {
+      params.delete('view');
+      const query = params.toString();
+      navigate({ pathname: location.pathname, search: query ? '?' + query : '' }, { replace: true, state: location.state });
+    }
+  }, [location, navigate]);
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('view') === 'slow') void loadMovementHistory();
+  }, [loadMovementHistory, location.search]);
+
   
   const [qaPublishAllowedSaving, setQaPublishAllowedSaving] = useState(false);
   const [qaPublishAllowedError, setQaPublishAllowedError] = useState('');
@@ -802,6 +885,108 @@ export default function Stock() {
     ? getVisibleHoldingEconomics(product, visibleHoldingsByProduct.get(product.id) ?? [], 'all').purchaseCost
     : (product.purchasePrice > 0 ? product.purchasePrice : null), [holdingsEnabled, visibleHoldingsByProduct]);
 
+  const movementTodayKey = stockCalendarDateKey(new Date());
+  const movementStatsByProduct = useMemo(() => {
+    const totals = new Map<string, StockMovementSummary>();
+    if (!movementHistorySales) return totals;
+    const today = parseStockCalendarDate(movementTodayKey);
+    if (!today) return totals;
+    const todayNumber = stockCalendarDayNumber(today);
+    for (const sale of movementHistorySales) {
+      const saleDate = parseStockCalendarDate(sale.date);
+      if (!saleDate) continue;
+      const daysAgo = todayNumber - stockCalendarDayNumber(saleDate);
+      if (daysAgo < 0) continue;
+      const items = sale.items?.length
+        ? sale.items
+        : [{ productId: sale.productId, quantity: sale.quantity, productName: sale.productName, price: sale.unitPrice }];
+      for (const item of items) {
+        if (!item.productId) continue;
+        const quantity = Math.max(0, Number(item.quantity) || 0);
+        if (quantity <= 0) continue;
+        const summary = totals.get(item.productId) ?? {
+          lastSaleDate: null,
+          soldLast30Days: 0,
+          soldLast60Days: 0,
+          soldLast90Days: 0,
+        };
+        if (!summary.lastSaleDate || stockCalendarDayNumber(saleDate) > stockCalendarDayNumber(summary.lastSaleDate)) {
+          summary.lastSaleDate = saleDate;
+        }
+        if (daysAgo <= 30) summary.soldLast30Days += quantity;
+        if (daysAgo <= 60) summary.soldLast60Days += quantity;
+        if (daysAgo <= 90) summary.soldLast90Days += quantity;
+        totals.set(item.productId, summary);
+      }
+    }
+    return totals;
+  }, [movementHistorySales, movementTodayKey]);
+
+  const slowMovementRows = useMemo(() => {
+    if (!movementHistorySales) return [];
+    const today = parseStockCalendarDate(movementTodayKey);
+    if (!today) return [];
+    const todayNumber = stockCalendarDayNumber(today);
+    const query = slowMovementQuery.trim().toLocaleLowerCase('es-AR');
+    const thresholdDays = slowMovementThreshold === 'never' ? null : Number(slowMovementThreshold);
+    const rows: StockMovementRow[] = [];
+
+    for (const product of ownerVisibleProducts) {
+      if (!holdingsEnabled && ownerFilter !== 'all' && product.inventoryOwnerId !== ownerFilter) continue;
+      if (slowMovementCategory !== 'all' && product.category !== slowMovementCategory) continue;
+      const activeHoldings = holdingsEnabled ? (visibleHoldingsByProduct.get(product.id) ?? []) : [];
+      const stock = holdingsEnabled
+        ? activeHoldings.reduce((sum, holding) => sum + Math.max(0, holding.stock), 0)
+        : Math.max(0, product.stock);
+      if (stock <= 0) continue;
+
+      const costEntries = holdingsEnabled
+        ? activeHoldings.filter((holding) => holding.stock > 0 && holding.purchaseCost > 0)
+          .map((holding) => ({ units: holding.stock, cost: holding.purchaseCost }))
+        : product.purchasePrice > 0 ? [{ units: stock, cost: product.purchasePrice }] : [];
+      const unitsWithCost = Math.min(stock, costEntries.reduce((sum, entry) => sum + entry.units, 0));
+      const unitsWithoutCost = Math.max(0, stock - unitsWithCost);
+      const capitalAtCost = costEntries.reduce((sum, entry) => sum + entry.units * entry.cost, 0);
+      const grossPotential = unitsWithCost * product.salePrice - capitalAtCost;
+      const movement = movementStatsByProduct.get(product.id) ?? {
+        lastSaleDate: null,
+        soldLast30Days: 0,
+        soldLast60Days: 0,
+        soldLast90Days: 0,
+      };
+      const daysInactive = movement.lastSaleDate
+        ? Math.max(0, todayNumber - stockCalendarDayNumber(movement.lastSaleDate))
+        : null;
+      if (thresholdDays === null ? daysInactive !== null : daysInactive !== null && daysInactive < thresholdDays) continue;
+
+      const code = getProductSearchCode(product);
+      const ownerLabel = holdingsEnabled
+        ? [...new Set(activeHoldings.map((holding) => inventoryOwnersById.get(holding.inventoryOwnerId)?.name).filter(Boolean))].join(', ') || 'Titular'
+        : getInventoryOwnerName(product, inventoryOwners);
+      const haystack = [product.name, product.category, code, ownerLabel].join(' ').toLocaleLowerCase('es-AR');
+      if (query && !haystack.includes(query)) continue;
+
+      rows.push({
+        product, ownerLabel, stock, unitsWithCost, unitsWithoutCost, capitalAtCost, grossPotential,
+        lastSaleDate: movement.lastSaleDate, daysInactive, soldLast30Days: movement.soldLast30Days,
+        soldLast60Days: movement.soldLast60Days, soldLast90Days: movement.soldLast90Days,
+      });
+    }
+
+    return rows.sort((a, b) => {
+      if (slowMovementSort === 'oldest') {
+        return (b.daysInactive ?? Number.MAX_SAFE_INTEGER) - (a.daysInactive ?? Number.MAX_SAFE_INTEGER)
+          || b.capitalAtCost - a.capitalAtCost;
+      }
+      return b.capitalAtCost - a.capitalAtCost
+        || (b.daysInactive ?? Number.MAX_SAFE_INTEGER) - (a.daysInactive ?? Number.MAX_SAFE_INTEGER);
+    });
+  }, [
+    holdingsEnabled, inventoryOwners, inventoryOwnersById, movementHistorySales, movementStatsByProduct,
+    movementTodayKey, ownerFilter, ownerVisibleProducts, slowMovementCategory, slowMovementQuery,
+    slowMovementSort, slowMovementThreshold, visibleHoldingsByProduct,
+  ]);
+
   const filteredProducts = useMemo(() => {
     const normalizedSearch = deferredSearch.trim().toLocaleLowerCase('es-AR');
     const minPrice = advancedFilters.minPrice === '' ? null : Number(advancedFilters.minPrice);
@@ -968,6 +1153,11 @@ export default function Stock() {
       {desktopProductId && <Suspense fallback={null}>
         <DesktopProductEditorRoute key={desktopProductId} productId={desktopProductId} products={products} loading={loading} onEditProduct={openProductEditor} />
       </Suspense>}
+      {isMobile && !isResellersRoute && (
+        <button type="button" onClick={() => void loadMovementHistory()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100 lg:hidden">
+          <Clock3 size={17} /> Ver productos sin movimiento
+        </button>
+      )}
       {isMobile && !isResellersRoute && <Suspense fallback={<div role="status" className="min-h-[60dvh] animate-pulse rounded-2xl bg-[var(--surface-muted)] lg:hidden" />}>
         <MobileStockEntry
           data={[
@@ -1036,6 +1226,9 @@ export default function Stock() {
           <p className="text-slate-500 dark:text-slate-400">Controla tus productos y existencias</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <button type="button" onClick={() => void loadMovementHistory()} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 font-semibold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-950/50">
+            <Clock3 size={18} /> Sin movimiento
+          </button>
           <button type="button" onClick={() => { setExportScope(selectedFilteredProducts.length ? 'selected' : 'filtered'); setExportModalOpen(true); }} disabled={!filteredProducts.length || isExportingPdf} title={!filteredProducts.length ? 'No hay resultados para exportar' : 'Exportar resultados filtrados o seleccionados'} className="inline-flex items-center gap-2 rounded-xl bg-[#365fad] px-4 py-2.5 font-semibold text-white shadow-sm shadow-slate-900/10 transition-colors hover:bg-[#284b91] disabled:cursor-not-allowed disabled:opacity-50">
             {isExportingPdf ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
             {isExportingPdf ? 'Preparando…' : 'Exportar'}
@@ -1155,6 +1348,96 @@ export default function Stock() {
       )}
 
       {!isResellersRoute && <>
+
+      <Modal
+        isOpen={slowMovementOpen}
+        onClose={closeSlowMovement}
+        title="Análisis de stock sin movimiento"
+        className="max-w-7xl"
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">
+            Se toma la fecha de venta registrada, aunque el ticket todavía no esté cobrado. La ganancia potencial se calcula solo para unidades con costo registrado.
+          </div>
+          {movementHistoryLoading && (
+            <div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-slate-600 dark:text-slate-300">
+              <Loader2 size={18} className="animate-spin" /> Cargando historial de ventas…
+            </div>
+          )}
+          {!movementHistoryLoading && movementHistorySales === null && (
+            <div className="rounded-xl border border-slate-200 p-6 text-center dark:border-slate-700">
+              <p className="text-sm text-slate-600 dark:text-slate-300">No pudimos cargar el historial completo para calcular la última venta.</p>
+              <button type="button" onClick={() => void loadMovementHistory()} className="mt-3 rounded-lg bg-[#365fad] px-4 py-2 text-sm font-semibold text-white">Reintentar</button>
+            </div>
+          )}
+          {!movementHistoryLoading && movementHistorySales !== null && (
+            <>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60"><p className="text-xs text-slate-500 dark:text-slate-400">Productos afectados</p><p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{slowMovementRows.length}</p></div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60"><p className="text-xs text-slate-500 dark:text-slate-400">Unidades en stock</p><p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{slowMovementRows.reduce((sum, row) => sum + row.stock, 0).toLocaleString('es-AR')}</p></div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60"><p className="text-xs text-slate-500 dark:text-slate-400">Capital a costo</p><p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(slowMovementRows.reduce((sum, row) => sum + row.capitalAtCost, 0))}</p></div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/70 dark:bg-emerald-950/30"><p className="text-xs text-emerald-800 dark:text-emerald-300">Ganancia bruta potencial</p><p className="mt-1 text-lg font-bold text-emerald-900 dark:text-emerald-200">{formatCurrency(slowMovementRows.reduce((sum, row) => sum + row.grossPotential, 0))}</p><p className="text-[11px] text-emerald-800 dark:text-emerald-300">Sin costo: {slowMovementRows.reduce((sum, row) => sum + row.unitsWithoutCost, 0)} unidades</p></div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60"><p className="text-xs text-slate-500 dark:text-slate-400">Vendidas en 90 días</p><p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{slowMovementRows.reduce((sum, row) => sum + row.soldLast90Days, 0).toLocaleString('es-AR')}</p><p className="text-[11px] text-slate-500 dark:text-slate-400">de estos productos</p></div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Buscar producto
+                  <input type="search" value={slowMovementQuery} onChange={(event) => setSlowMovementQuery(event.target.value)} placeholder="Nombre, modelo o código" className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                </label>
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Inactividad
+                  <select value={slowMovementThreshold} onChange={(event) => setSlowMovementThreshold(event.target.value as typeof slowMovementThreshold)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                    <option value="30">30 días o más</option><option value="60">60 días o más</option><option value="90">90 días o más</option><option value="never">Nunca vendido</option>
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Titular
+                  <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                    <option value="all">Todos los titulares</option>{inventoryOwners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name}{owner.archivedAt ? ' (archivado)' : ''}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Ordenar por
+                  <select value={slowMovementSort} onChange={(event) => setSlowMovementSort(event.target.value as typeof slowMovementSort)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                    <option value="capital">Mayor capital inmovilizado</option><option value="oldest">Mayor tiempo sin vender</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{slowMovementRows.length} productos con stock que cumplen el filtro</span>
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Categoría
+                  <select value={slowMovementCategory} onChange={(event) => setSlowMovementCategory(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                    <option value="all">Todas</option>{categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                <table className="w-full min-w-[1080px] text-left text-sm">
+                  <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
+                    <tr><th className="px-3 py-3">Producto</th><th className="px-3 py-3">Última venta</th><th className="px-3 py-3 text-right">Inactivo</th><th className="px-3 py-3 text-right">Vendidas 30d</th><th className="px-3 py-3 text-right">Vendidas 60d</th><th className="px-3 py-3 text-right">Vendidas 90d</th><th className="px-3 py-3 text-right">Unidades</th><th className="px-3 py-3 text-right">Capital a costo</th><th className="px-3 py-3 text-right">Ganancia potencial</th><th className="px-3 py-3">Titular</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    {slowMovementRows.map((row) => (
+                      <tr key={row.product.id} className="align-middle">
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-3"><ProductThumbnail product={row.product} sizeClassName="size-10" /><div className="min-w-0"><p className="max-w-56 truncate font-semibold text-slate-900 dark:text-white">{row.product.name}</p><p className="text-xs text-slate-500 dark:text-slate-400">{row.product.category || 'Sin categoría'} · Venta {formatCurrency(row.product.salePrice)}</p><p className="text-[11px] text-slate-500 dark:text-slate-400">Costo conocido: {row.unitsWithCost}/{row.stock} u.</p></div></div>
+                        </td>
+                        <td className="px-3 py-3 text-slate-600 dark:text-slate-300">{row.lastSaleDate ? formatStockCalendarDate(row.lastSaleDate) : <span className="font-semibold text-amber-700 dark:text-amber-300">Nunca vendido</span>}</td>
+                        <td className="px-3 py-3 text-right">{row.daysInactive === null ? '—' : row.daysInactive + ' días'}</td>
+                        <td className="px-3 py-3 text-right">{row.soldLast30Days.toLocaleString('es-AR')}</td>
+                        <td className="px-3 py-3 text-right">{row.soldLast60Days.toLocaleString('es-AR')}</td>
+                        <td className="px-3 py-3 text-right">{row.soldLast90Days.toLocaleString('es-AR')}</td>
+                        <td className="px-3 py-3 text-right font-semibold">{row.stock.toLocaleString('es-AR')}</td>
+                        <td className="px-3 py-3 text-right font-semibold">{row.capitalAtCost > 0 ? formatCurrency(row.capitalAtCost) : 'Sin costo registrado'}</td>
+                        <td className="px-3 py-3 text-right font-semibold text-emerald-700 dark:text-emerald-300">{row.unitsWithCost > 0 ? formatCurrency(row.grossPotential) : 'Sin costo registrado'}</td>
+                        <td className="px-3 py-3 text-slate-600 dark:text-slate-300">{row.ownerLabel}</td>
+                      </tr>
+                    ))}
+                    {slowMovementRows.length === 0 && <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-500 dark:text-slate-400">No hay productos con stock en este grupo. Probá otro período, titular o categoría.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">El capital y la ganancia se calculan sobre las unidades que tienen costo registrado. Las unidades sin costo no se suman a la ganancia; el cálculo no descuenta gastos ni envíos.</p>
+            </>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         isOpen={exportModalOpen}
