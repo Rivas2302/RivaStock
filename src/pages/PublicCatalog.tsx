@@ -26,7 +26,7 @@ import {
 } from '../lib/publicCatalogAvailability';
 import { getCommercialRuleMessage, isCommercialRuleSatisfied } from '../lib/commercialRules';
 import { getAllCategoryPhotoUrls, getCategoryPhotoUrls } from '../lib/catalogCategoryPhotos';
-import { buildResellerCatalogCategories, getResellerProductCategoryKey, isUncategorizedCategoryName } from '../lib/resellerCatalogCategories';
+import { getResellerProductCategoryKey, isUncategorizedCategoryName } from '../lib/resellerCatalogCategories';
 import {
   ShoppingBag,
   Search,
@@ -1699,7 +1699,7 @@ if (loading) {
           {offerProducts.length > 0 && <a href="#catalog-section-offers" className="flex min-h-24 flex-col justify-center rounded-2xl bg-[var(--action-bg)] p-5 text-[var(--action-ink)] transition-transform hover:-translate-y-0.5"><span className="text-xs font-bold uppercase tracking-wider">Por tiempo limitado</span><span className="mt-1 text-lg font-black">Ofertas relámpago</span><span className="mt-1 text-sm">Hasta {maxOfferDiscount}% de descuento.</span></a>}
         </section>}
         {!isSuperOffersRoute && ((channel !== 'reseller' && visibleSections.find(section => section.id === 'categories')?.visible)
-          || (channel === 'reseller' && config.resellerCategorySettings?.mode === 'categories')) && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
+          || (channel === 'reseller' && config?.resellerCategorySettings?.mode === 'categories')) && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
           <h2 className="mb-4 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.categories}</h2>
           <div className="relative">
             {categoryCanScrollLeft && <button type="button" aria-label="Desplazar categorías a la izquierda" onClick={() => categoryStripRef.current?.scrollBy({ left: -Math.max(260, Math.floor((categoryStripRef.current?.clientWidth ?? 400) * 0.72)), behavior: 'smooth' })} className="absolute left-0 top-6 z-10 hidden size-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)]/95 text-2xl font-bold shadow-lg md:grid">‹</button>}
