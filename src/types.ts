@@ -196,6 +196,8 @@ export interface ResellerSupplierOrderRound {
   audienceCodeHash?: string | null;
   closesAt: string;
   minimumOrderAmount: number;
+  minimumOrderQuantity: number;
+  supplierMinimumOrderAmount: number;
   status: ResellerSupplierRoundStatus;
   createdAt: string;
   updatedAt: string;
@@ -454,6 +456,8 @@ export interface PublicResellerSupplierRound {
   audienceName: string;
   closesAt: string;
   minimumOrderAmount: number;
+  minimumOrderQuantity: number;
+  supplierMinimumOrderAmount: number;
   products: Array<Pick<PublicCatalogProduct, 'id' | 'name' | 'categoryId' | 'category' | 'salePrice' | 'imageUrl' | 'images'>>;
 }
 
