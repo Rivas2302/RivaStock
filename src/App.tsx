@@ -131,6 +131,7 @@ function AppRoutes() {
           <Route path="fotos" element={withSuspense(<RequireBusinessModule module="sendPhotos"><ProductPhotos /></RequireBusinessModule>)} />
           <Route path="stock" element={withSuspense(<RequireBusinessModule module="stock"><RequirePermission module="stock"><Stock /></RequirePermission></RequireBusinessModule>)} />
           <Route path="revendedores" element={withSuspense(<RequireBusinessModule module="resellers"><RequirePermission module="stock"><Stock /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="revendedores/ofertas" element={withSuspense(<RequireBusinessModule module="resellers"><RequirePermission module="stock"><Stock /></RequirePermission></RequireBusinessModule>)} />
           <Route path="ventas" element={withSuspense(<RequireBusinessModule module="sales"><RequirePermission module="ventas"><Sales /></RequirePermission></RequireBusinessModule>)} />
           <Route path="reportes" element={withSuspense(<RequireBusinessModule module="reports"><RequirePermission module="ventas" action="read"><Reports /></RequirePermission></RequireBusinessModule>)} />
           <Route path="pos" element={withSuspense(<RequireBusinessModule module="sales"><RequirePermission module="ventas" action="write"><POS /></RequirePermission></RequireBusinessModule>)} />
