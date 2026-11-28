@@ -29,6 +29,7 @@ import type {
   PriceListPricingMode,
   Product,
   ResellerSupplierList,
+  ResellerSupplierOrderRound,
   Supplier,
   ResellerCatalogSettings,
 } from '../types';
@@ -40,6 +41,7 @@ import {
   loadResellerPriceList,
   loadResellerSupplierListPricing,
   loadResellerSupplierLists,
+  loadResellerSupplierRounds,
   saveResellerPriceList,
   saveResellerBuyingPolicy,
   saveResellerMarginRules,
@@ -426,6 +428,7 @@ export default function ResellerPriceListModal({
   const [marginFilter, setMarginFilter] = useState<'all' | 'low'>('all');
   const [advisorFilter, setAdvisorFilter] = useState<ResellerPricingAdviceFilter>('all');
   const [supplierLists, setSupplierLists] = useState<ResellerSupplierList[]>([]);
+  const [supplierRounds, setSupplierRounds] = useState<ResellerSupplierOrderRound[]>([]);
   const [supplierPricingSummaries, setSupplierPricingSummaries] = useState<Record<string, SupplierPricingSummary>>({});
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
@@ -938,10 +941,24 @@ export default function ResellerPriceListModal({
     })
   ), [advisorFilter, availabilityFilter, categories, categoryFilter, discount, holdings, holdingsEnabled, itemByProductId, marginFilter, marginMaxFilter, marginMinFilter, marginSuggestionsByProductId, priceMaxFilter, priceMinFilter, profitMaxFilter, profitMinFilter, pricingAdviceByProductId, searchMatchedProducts, uncategorizedFilter, withoutPhotoFilter]);
 
+  useEffect(() => {
+    if (!isOpen || supplierLists.length === 0) {
+      setSupplierRounds([]);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(supplierLists.map(supplierList => loadResellerSupplierRounds(supplierList.id).catch(() => [])))
+      .then(roundLists => { if (!cancelled) setSupplierRounds(roundLists.flat()); });
+    return () => { cancelled = true; };
+  }, [isOpen, supplierLists]);
+
   const supplierListBySupplierId = useMemo(
     () => new Map(supplierLists.map((supplierList) => [supplierList.supplierId, supplierList])),
     [supplierLists],
   );
+  const openSupplierRoundCount = supplierRounds.filter(round => round.status === 'open' && Date.parse(round.closesAt) > Date.now()).length;
+  const pendingSupplierPayments = supplierRounds.flatMap(round => round.orders).filter(order => !order.paidAt);
+  const pendingSupplierPaymentTotal = pendingSupplierPayments.reduce((total, order) => total + order.resellerTotal, 0);
   const supplierNameByListId = useMemo(() => {
     const supplierNameById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
     return new Map(supplierLists.map((supplierList) => [
@@ -2660,8 +2677,8 @@ export default function ResellerPriceListModal({
                 </button>
                 <button type="button" onClick={() => setPageTab('orders')} className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4 text-left transition-colors hover:bg-[var(--surface-2)]">
                   <span className="text-sm font-semibold text-[var(--ink)]">Encargos</span>
-                  <span className="mt-2 block text-2xl font-semibold tabular-nums text-[var(--ink)]">{supplierLists.length} <span className="text-sm font-normal text-[var(--ink-muted)]">listas para abrir</span></span>
-                  <span className="mt-1 block text-xs text-[var(--ink-muted)]">Cuando abras uno, tus revendedores piden hasta el cierre.</span>
+                  <span className="mt-2 block text-2xl font-semibold tabular-nums text-[var(--ink)]">{openSupplierRoundCount} <span className="text-sm font-normal text-[var(--ink-muted)]">tandas abiertas</span></span>
+                  <span className="mt-1 block text-xs text-[var(--ink-muted)]">{pendingSupplierPayments.length} pagos pendientes · {formatCurrency(pendingSupplierPaymentTotal)}</span>
                 </button>
               </div>
             </div>
@@ -2690,8 +2707,8 @@ export default function ResellerPriceListModal({
           </section>}
           {displayMode === 'page' && pageTab === 'orders' && <section role="tabpanel" aria-label="Encargos" className="space-y-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div><h2 className="text-xl font-semibold text-[var(--ink)]">Encargos</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Tus revendedores piden y pagan antes del cierre; vos hacés un solo pedido al proveedor.</p></div>
-              {supplierLists.length > 0 && <button type="button" onClick={() => setPageTab('providers')} className="min-h-10 self-start rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Ver proveedores</button>}
+              <div><h2 className="text-xl font-semibold text-[var(--ink)]">Encargos</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">“Por pedido” describe cómo conseguís un producto; una tanda de encargos reúne pedidos de varios revendedores para comprar al proveedor al cierre.</p></div>
+              {supplierLists.length > 0 && <button type="button" onClick={() => setPageTab('providers')} className="min-h-10 self-start rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Abrir tanda de pedidos</button>}
             </div>
             {supplierLists.length === 0 ? <div className="rounded-xl border border-dashed border-[var(--line)] p-6 text-center">
               <p className="font-semibold text-[var(--ink)]">No hay encargos abiertos</p>
