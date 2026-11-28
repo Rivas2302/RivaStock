@@ -171,7 +171,7 @@ export default function Stock() {
   const canDelete = usePermission('stock', 'delete');
   const location = useLocation();
   const navigate = useNavigate();
-  const isResellersRoute = location.pathname === '/revendedores';
+  const isResellersRoute = location.pathname.startsWith('/revendedores');
   const isMobile = useIsMobile();
   useEffect(() => {
     if (!isMobile) return;
