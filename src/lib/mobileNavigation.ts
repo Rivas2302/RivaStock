@@ -21,7 +21,7 @@ export interface NavigationPermissionState {
 export const NAVIGATION_GROUPS = [
   { label: 'Vender', paths: ['/ventas', '/presupuestos', '/pedidos', '/consulta-rapida'] },
   { label: 'Productos', paths: ['/stock', '/ingresos', '/fotos'] },
-  { label: 'Clientes y proveedores', paths: ['/clientes', '/proveedores', '/revendedores', '/compras'] },
+  { label: 'Clientes y proveedores', paths: ['/clientes', '/proveedores', '/revendedores', '/revendedores/ofertas', '/compras'] },
   { label: 'Dinero', paths: ['/caja', '/reportes', '/calculadora'] },
   { label: 'Herramientas', paths: ['/ia', '/ia/conocimientos', '/automatizaciones', '/trazabilidad', '/config'] },
   { label: 'Administración', paths: ['/plataforma'] },
@@ -30,7 +30,7 @@ export const NAVIGATION_GROUPS = [
 export const DESKTOP_NAVIGATION_GROUPS = [
   NAVIGATION_GROUPS[0],
   NAVIGATION_GROUPS[1],
-  { label: 'Relaciones', paths: ['/revendedores'] },
+  { label: 'Relaciones', paths: ['/revendedores', '/revendedores/ofertas'] },
   { ...NAVIGATION_GROUPS[2], paths: NAVIGATION_GROUPS[2].paths.filter(path => path !== '/revendedores') },
   NAVIGATION_GROUPS[3],
   NAVIGATION_GROUPS[4],
