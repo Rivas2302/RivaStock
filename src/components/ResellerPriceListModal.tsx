@@ -2535,6 +2535,17 @@ export default function ResellerPriceListModal({
         minimumOrderAmount,
         minimumOrderQuantity,
       });
+      const productUrlByProductId = publicCatalogUrl
+        ? Object.fromEntries(exportProducts.map(product => {
+          const catalogUrl = new URL(publicCatalogUrl);
+          const catalogBase = `${catalogUrl.origin}${catalogUrl.pathname.replace(/\\/+$/, '')}/`;
+          const productUrl = new URL(encodeURIComponent(product.id), catalogBase);
+          productUrl.searchParams.set('channel', 'reseller');
+          const round = supplierRounds.find(candidate => candidate.products.some(roundProduct => roundProduct.id === product.id));
+          if (round) productUrl.searchParams.set('round', round.id);
+          return [product.id, productUrl.toString()];
+        }))
+        : undefined;
       const pdf = await createPriceListPdf({
         products: exportProducts,
         categories,
@@ -2548,6 +2559,8 @@ export default function ResellerPriceListModal({
         includeInventoryOwner: false,
         includeInternalNotes: false,
         includePhotos: format === 'photos',
+        includeCode: false,
+        productUrlByProductId,
         groupByCategory,
       });
       const url = URL.createObjectURL(pdf.blob);
