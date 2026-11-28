@@ -98,6 +98,8 @@ export async function getPublicResellerSupplierRounds(
     return {
       ...round,
       minimumOrderAmount: Number(round.minimumOrderAmount ?? 0),
+      minimumOrderQuantity: Number(round.minimumOrderQuantity ?? 0),
+      supplierMinimumOrderAmount: Number(round.supplierMinimumOrderAmount ?? 0),
       products: (round.products ?? []).map(product => ({ ...product, salePrice: Number(product.salePrice ?? 0), images: product.images ?? [] })),
     };
   });
