@@ -267,6 +267,9 @@ export default function ProductPhotos() {
   const selectedPhotoCount = selectedProducts.reduce((total, product) => (
     total + getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length
   ), 0);
+  const reviewPhotoCount = selectedProducts.reduce((total, product) => (
+    total + (reviewPhotoIndexes[product.id]?.length ?? 0)
+  ), 0);
 
   const getPrice = useCallback((product: Product): number | null => {
     if (priceChoice === 'public') return product.salePrice;
@@ -428,12 +431,7 @@ export default function ProductPhotos() {
       showToast('Podés seleccionar hasta 10 productos.', 'info');
       return;
     }
-    if (selectedPhotoCount + photoCount > MAX_SELECTED_PHOTOS) {
-      showToast('La selección puede incluir hasta 10 fotos en total.', 'info');
-      return;
-    }
     setSelectedIds((current) => [...current, product.id]);
-    if (photoCount > 0) void prepareProductFiles(product).catch(() => undefined);
   };
 
   const catalogUrlFor = (product: Product): string | null => (
@@ -860,7 +858,7 @@ export default function ProductPhotos() {
         <aside className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900 md:bottom-5">
           <div className="min-w-0 text-sm text-slate-700 dark:text-slate-200">
             <span className="font-bold">{selectedIds.length} {selectedIds.length === 1 ? 'producto' : 'productos'}</span>
-            <span className="ml-2 text-slate-500">{selectedPhotoCount}/{MAX_SELECTED_PHOTOS} fotos</span>
+            <span className="ml-2 text-slate-500">{selectedPhotoCount} fotos para revisar</span>
           </div>
           <div className="flex shrink-0 gap-2">
             <button type="button" onClick={() => setSelectedIds([])} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300">Cancelar</button>
@@ -880,9 +878,10 @@ export default function ProductPhotos() {
             </header>
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{selectedProducts.length} {selectedProducts.length === 1 ? 'producto' : 'productos'} · {selectedProducts.reduce((count, product) => count + (reviewPhotoIndexes[product.id]?.length ?? 0), 0)} fotos</p>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{selectedProducts.length} {selectedProducts.length === 1 ? 'producto' : 'productos'} · {reviewPhotoCount} fotos seleccionadas · máximo {MAX_SELECTED_PHOTOS}</p>
                 <button type="button" onClick={setOnlyCoverPhotos} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">Solo portada</button>
               </div>
+              {reviewPhotoCount > MAX_SELECTED_PHOTOS && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Elegí hasta {MAX_SELECTED_PHOTOS} fotos o usá “Solo portada”.</p>}
               <div className="space-y-3">
                 {selectedProducts.map((product) => {
                   const urls = getProductPhotoUrlsForSharing(product, supabaseProjectUrl);
@@ -935,7 +934,7 @@ export default function ProductPhotos() {
             </div>
             <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 p-4 dark:border-slate-800 sm:flex-row sm:justify-end sm:px-6">
               <button type="button" onClick={() => void copyReviewMessage()} disabled={!reviewText.trim()} className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"><ProductPhotoIcon name="copy" size={18} /> Copiar mensaje</button>
-              <button type="button" onClick={() => void sendReview()} disabled={!reviewText.trim() || selectedProducts.some((product) => preparingPhotoIds.includes(product.id) && (reviewPhotoIndexes[product.id]?.length ?? 0) > 0)} className="flex items-center justify-center gap-2 rounded-xl bg-[#365fad] px-4 py-3 font-bold text-white disabled:opacity-50">
+              <button type="button" onClick={() => void sendReview()} disabled={!reviewText.trim() || reviewPhotoCount > MAX_SELECTED_PHOTOS || selectedProducts.some((product) => preparingPhotoIds.includes(product.id) && (reviewPhotoIndexes[product.id]?.length ?? 0) > 0)} className="flex items-center justify-center gap-2 rounded-xl bg-[#365fad] px-4 py-3 font-bold text-white disabled:opacity-50">
                 <ProductPhotoIcon name="share" size={18} />
                 {selectedProducts.some((product) => (reviewPhotoIndexes[product.id]?.length ?? 0) > 0) ? 'Compartir fotos y mensaje' : 'Abrir WhatsApp con mensaje'}
               </button>
