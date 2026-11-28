@@ -475,6 +475,7 @@ export default function ProductPhotos() {
   };
 
   const removeReviewProduct = (productId: string) => {
+    const removedProduct = selectedProducts.find((product) => product.id === productId);
     const nextProducts = selectedProducts.filter((product) => product.id !== productId);
     setSelectedIds(nextProducts.map((product) => product.id));
     setReviewPhotoIndexes((current) => {
@@ -482,7 +483,14 @@ export default function ProductPhotos() {
       delete next[productId];
       return next;
     });
-    if (!reviewTextEdited) setReviewText(createTextFor(nextProducts) ?? '');
+    if (!reviewTextEdited) {
+      setReviewText(createTextFor(nextProducts) ?? '');
+    } else if (removedProduct) {
+      const removedLinePrefix = removedProduct.name + ' — ';
+      setReviewText((current) => current.split('\n')
+        .filter((line) => !line.trimStart().startsWith(removedLinePrefix))
+        .join('\n'));
+    }
     if (!nextProducts.length) setReviewOpen(false);
   };
 
