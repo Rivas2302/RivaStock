@@ -32,6 +32,9 @@ export function useSuppliers() {
           category: r.category,
           notes: r.notes,
           paymentTerms: r.payment_terms,
+          minimumOrder: r.minimum_order,
+          deliveryMethod: r.delivery_method,
+          usualLeadTime: r.usual_lead_time,
           catalogUrl: r.catalog_url,
           facebookUrl: r.facebook_url,
           instagramUrl: r.instagram_url,
@@ -71,6 +74,9 @@ export function useSuppliers() {
     catalogUrl?: string,
     facebookUrl?: string,
     instagramUrl?: string,
+    minimumOrder?: string,
+    deliveryMethod?: 'shipping' | 'pickup' | 'both',
+    usualLeadTime?: string,
   ): Promise<Supplier> => {
     const result = await callRpc<Supplier>('register_supplier', {
       p_name:          name,
@@ -86,6 +92,14 @@ export function useSuppliers() {
       p_facebook_url:  facebookUrl   ?? null,
       p_instagram_url: instagramUrl  ?? null,
     });
+    if (minimumOrder || deliveryMethod || usualLeadTime) {
+      await callRpc<Supplier>('update_supplier_purchase_conditions', {
+        p_id: result.id,
+        p_minimum_order: minimumOrder ?? null,
+        p_delivery_method: deliveryMethod ?? null,
+        p_usual_lead_time: usualLeadTime ?? null,
+      });
+    }
     await fetchSuppliers();
     return result;
   };
@@ -104,6 +118,9 @@ export function useSuppliers() {
     catalogUrl?: string,
     facebookUrl?: string,
     instagramUrl?: string,
+    minimumOrder?: string,
+    deliveryMethod?: 'shipping' | 'pickup' | 'both',
+    usualLeadTime?: string,
   ): Promise<Supplier> => {
     const result = await callRpc<Supplier>('update_supplier', {
       p_id:            id,
@@ -119,6 +136,12 @@ export function useSuppliers() {
       p_catalog_url:   catalogUrl    ?? null,
       p_facebook_url:  facebookUrl   ?? null,
       p_instagram_url: instagramUrl  ?? null,
+    });
+    await callRpc<Supplier>('update_supplier_purchase_conditions', {
+      p_id: id,
+      p_minimum_order: minimumOrder ?? null,
+      p_delivery_method: deliveryMethod ?? null,
+      p_usual_lead_time: usualLeadTime ?? null,
     });
     await fetchSuppliers();
     return result;
