@@ -18,6 +18,7 @@ import {
   Power,
 } from 'lucide-react';
 import type {
+  CatalogConfig,
   Category,
   InventoryHolding,
   InventoryOwner,
@@ -29,8 +30,9 @@ import type {
   Product,
   ResellerSupplierList,
   Supplier,
+  ResellerCatalogSettings,
 } from '../types';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   configureResellerPriceList,
   configureResellerPricingAdvisor,
@@ -381,7 +383,9 @@ export default function ResellerPriceListModal({
   onPendingImageCleanup,
 }: ResellerPriceListModalProps) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const [pageTab, setPageTab] = useState<ResellerPageTab>(() => {
+    if (location.pathname === '/revendedores/ofertas') return 'super-offers';
     const requestedTab = searchParams.get('tab');
     return RESELLER_PAGE_TABS.includes(requestedTab as ResellerPageTab) ? requestedTab as ResellerPageTab : 'summary';
   });
@@ -404,7 +408,17 @@ export default function ResellerPriceListModal({
   const [marginRulesSaveStatus, setMarginRulesSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [search, setSearch] = useState('');
   const [productListSourceFilter, setProductListSourceFilter] = useState('all');
-  const [priceListInclusionFilter, setPriceListInclusionFilter] = useState<'all' | 'included'>('all');
+  const [priceListInclusionFilter, setPriceListInclusionFilter] = useState<'all' | 'included' | 'excluded'>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [priceMinFilter, setPriceMinFilter] = useState('');
+  const [priceMaxFilter, setPriceMaxFilter] = useState('');
+  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'in_stock' | 'on_order' | 'out_of_stock'>('all');
+  const [withoutPhotoFilter, setWithoutPhotoFilter] = useState(false);
+  const [uncategorizedFilter, setUncategorizedFilter] = useState(false);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+  const [catalogConfig, setCatalogConfig] = useState<CatalogConfig | null>(null);
+  const [resellerCategorySettings, setResellerCategorySettings] = useState<ResellerCatalogSettings>({ mode: 'all', categoryIds: [], showOtherProducts: true });
+  const [catalogCategorySaveStatus, setCatalogCategorySaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [marginFilter, setMarginFilter] = useState<'all' | 'low'>('all');
   const [advisorFilter, setAdvisorFilter] = useState<ResellerPricingAdviceFilter>('all');
   const [supplierLists, setSupplierLists] = useState<ResellerSupplierList[]>([]);
@@ -629,9 +643,10 @@ export default function ResellerPriceListModal({
           loaded = await loadResellerPriceList(ownerUid);
         }
         if (!loaded.list) throw new Error('No se pudo crear la lista de revendedores.');
-        const [loadedSupplierLists, loadedSuppliers] = await Promise.all([
+        const [loadedSupplierLists, loadedSuppliers, loadedCatalogConfigs] = await Promise.all([
           loadResellerSupplierLists(loaded.list.id),
           db.list<Supplier>('suppliers', ownerUid),
+          db.list<CatalogConfig>('catalog_configs', ownerUid),
         ]);
         const supplierListIds = loadedSupplierLists.map(supplierList => supplierList.id);
         const supplierPricingRows = await loadResellerSupplierListPricing(supplierListIds);
@@ -681,6 +696,15 @@ export default function ResellerPriceListModal({
         setAdvisorFilter('all');
         setMarginFilter('all');
         setSettingsExpanded(false);
+        const loadedCatalogConfig = loadedCatalogConfigs[0] ?? null;
+        setCatalogConfig(loadedCatalogConfig);
+        const savedCategorySettings = loadedCatalogConfig?.resellerCategorySettings;
+        setResellerCategorySettings({
+          mode: savedCategorySettings?.mode === 'categories' ? 'categories' : 'all',
+          categoryIds: Array.from(new Set((savedCategorySettings?.categoryIds ?? []).filter(id => categories.some(category => category.id === id)))),
+          showOtherProducts: savedCategorySettings?.showOtherProducts !== false,
+        });
+        setCatalogCategorySaveStatus('saved');
         setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
         setSupplierLists(loadedSupplierLists);
         setSupplierPricingSummaries(nextPricingSummaries);
@@ -701,6 +725,24 @@ export default function ResellerPriceListModal({
     void load();
     return () => { cancelled = true; };
   }, [canWrite, isOpen, ownerUid]);
+
+  useEffect(() => {
+    if (displayMode === 'page' && location.pathname === '/revendedores/ofertas') setPageTab('super-offers');
+  }, [displayMode, location.pathname]);
+
+  const saveResellerCatalogSettings = async () => {
+    if (!catalogConfig || !canWrite) return;
+    setCatalogCategorySaveStatus('saving');
+    try {
+      await db.update<CatalogConfig>('catalog_configs', catalogConfig.id, { resellerCategorySettings });
+      setCatalogConfig(current => current ? { ...current, resellerCategorySettings: { ...resellerCategorySettings, categoryIds: [...resellerCategorySettings.categoryIds] } } : current);
+      setCatalogCategorySaveStatus('saved');
+      showToast('Organización del catálogo guardada.', 'success');
+    } catch {
+      setCatalogCategorySaveStatus('error');
+      showToast('No se pudo guardar la organización del catálogo.', 'error');
+    }
+  };
 
   const persistSettings = useCallback(async (snapshot: ResellerSettingsSnapshot) => {
     if (!list || !canWrite) return;
@@ -804,6 +846,7 @@ export default function ResellerPriceListModal({
       product.name.toLocaleLowerCase('es-AR').includes(normalized)
       || product.category.toLocaleLowerCase('es-AR').includes(normalized)
       || (product.barcode ?? '').toLocaleLowerCase('es-AR').includes(normalized)
+      || ['sku', 'model', 'modelo', 'variant', 'variante', 'code', 'codigo'].some(key => String(product.customFields?.[key] ?? '').toLocaleLowerCase('es-AR').includes(normalized))
     ));
   }, [products, search]);
 
@@ -855,11 +898,25 @@ export default function ResellerPriceListModal({
   }, [pricingAdviceByProductId]);
 
   const visibleProducts = useMemo(() => (
-    searchMatchedProducts.filter(product => (
-      matchesResellerPricingAdviceFilter(pricingAdviceByProductId.get(product.id)?.status, advisorFilter)
-      && (marginFilter !== 'low' || marginSuggestionsByProductId.get(product.id)?.low === true)
-    ))
-  ), [advisorFilter, marginFilter, marginSuggestionsByProductId, pricingAdviceByProductId, searchMatchedProducts]);
+    searchMatchedProducts.filter(product => {
+      if (!matchesResellerPricingAdviceFilter(pricingAdviceByProductId.get(product.id)?.status, advisorFilter)) return false;
+      if (marginFilter === 'low' && marginSuggestionsByProductId.get(product.id)?.low !== true) return false;
+      if (categoryFilter !== 'all' && product.categoryId !== categoryFilter) return false;
+      if (withoutPhotoFilter && (product.images?.some(Boolean) || product.imageUrl)) return false;
+      const productCategory = categories.find(category => category.id === product.categoryId);
+      if (uncategorizedFilter && productCategory) return false;
+      const item = itemByProductId.get(product.id);
+      const resellerPrice = resolvePriceListPrice(product.salePrice, discount, item ?? { pricingMode: 'default', discountPercent: null, fixedPrice: null });
+      const minPrice = priceMinFilter.trim() ? Number(priceMinFilter) : null;
+      const maxPrice = priceMaxFilter.trim() ? Number(priceMaxFilter) : null;
+      if (minPrice !== null && Number.isFinite(minPrice) && resellerPrice < minPrice) return false;
+      if (maxPrice !== null && Number.isFinite(maxPrice) && resellerPrice > maxPrice) return false;
+      if (availabilityFilter === 'in_stock' && (item?.availability === 'on_order' || product.stock <= 0)) return false;
+      if (availabilityFilter === 'on_order' && item?.availability !== 'on_order') return false;
+      if (availabilityFilter === 'out_of_stock' && (item?.availability === 'on_order' || product.stock > 0)) return false;
+      return true;
+    })
+  ), [advisorFilter, availabilityFilter, categories, categoryFilter, discount, itemByProductId, marginFilter, marginSuggestionsByProductId, priceMaxFilter, priceMinFilter, pricingAdviceByProductId, searchMatchedProducts, uncategorizedFilter, withoutPhotoFilter]);
 
   const supplierListBySupplierId = useMemo(
     () => new Map(supplierLists.map((supplierList) => [supplierList.supplierId, supplierList])),
@@ -887,7 +944,9 @@ export default function ResellerPriceListModal({
     supplierCategoryMappings,
   ), [categories, products, supplierCategoryMappings, supplierLists, suppliers]);
   const resellerVisibleProducts = useMemo(() => visibleProducts.filter(product => {
-    if (priceListInclusionFilter === 'included' && !itemByProductId.has(product.id)) return false;
+    const included = itemByProductId.has(product.id);
+    if (priceListInclusionFilter === 'included' && !included) return false;
+    if (priceListInclusionFilter === 'excluded' && included) return false;
     if (productListSourceFilter === 'all') return true;
     const supplierListId = itemByProductId.get(product.id)?.supplierListId ?? supplierListByProductId.get(product.id)?.id;
     return productListSourceFilter === 'stock' ? !supplierListId : supplierListId === productListSourceFilter;
