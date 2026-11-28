@@ -619,6 +619,9 @@ export interface Supplier {
   category?: string;
   notes?: string;
   paymentTerms?: string;
+  minimumOrder?: string;
+  deliveryMethod?: 'shipping' | 'pickup' | 'both';
+  usualLeadTime?: string;
   catalogUrl?: string;
   catalogExchangeRate?: number | null;
   facebookUrl?: string;
