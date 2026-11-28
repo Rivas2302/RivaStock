@@ -17,6 +17,8 @@ interface PriceListPdfOptions {
   includeInventoryOwner?: boolean;
   includeInternalNotes?: boolean;
   includeCode?: boolean;
+  includePhotos?: boolean;
+  groupByCategory?: boolean;
 }
 
 interface CategoryGroup {
@@ -51,6 +53,34 @@ const getProductCode = (product: Product): string | null => {
 
   return null;
 };
+
+async function loadImageDataUrl(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const element = new Image();
+        element.onload = () => resolve(element);
+        element.onerror = () => reject(new Error('No se pudo cargar la imagen.'));
+        element.src = objectUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(image.naturalWidth || 800, 800);
+      canvas.height = Math.max(1, Math.round(canvas.width * (image.naturalHeight || 800) / Math.max(1, image.naturalWidth || 800)));
+      const context = canvas.getContext('2d');
+      if (!context) return null;
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.86);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  } catch {
+    return null;
+  }
+}
 
 const getProductDescription = (product: Product, includeInternalNotes: boolean): string => {
   const parts = includeInternalNotes ? [product.description, product.notes] : [product.description]
@@ -98,6 +128,8 @@ export async function createPriceListPdf({
   includeInventoryOwner = true,
   includeInternalNotes = true,
   includeCode = true,
+  includePhotos = false,
+  groupByCategory = true,
 }: PriceListPdfOptions): Promise<PriceListPdf> {
   const { jsPDF, autoTable } = await loadPdfRuntime();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -113,7 +145,17 @@ export async function createPriceListPdf({
   });
   const fileName = `${fileNamePrefix}-${generatedAt.toISOString().slice(0, 10)}.pdf`;
   const safeBusinessName = businessName.trim() || 'Mi Negocio';
-  const groups = groupProductsByCategory(products, categories);
+  const groups = groupByCategory
+    ? groupProductsByCategory(products, categories)
+    : [{ name: 'Productos', items: [...products].sort((a, b) => a.name.localeCompare(b.name, 'es-AR')) }];
+  const imageDataByProductId = new Map<string, string | null>();
+  if (includePhotos) {
+    const imageRows = await Promise.all(products.map(async product => {
+      const imageUrl = product.images?.find(Boolean) ?? product.imageUrl;
+      return [product.id, imageUrl ? await loadImageDataUrl(imageUrl) : null] as const;
+    }));
+    for (const [productId, imageData] of imageRows) imageDataByProductId.set(productId, imageData);
+  }
 
   const drawPageHeader = (pageNumber: number) => {
     if (pageNumber === 1) {
@@ -174,41 +216,44 @@ export async function createPriceListPdf({
 
   let cursorY = margin.top;
   for (const group of groups) {
-    const categoryHeight = 9;
+    const categoryHeight = groupByCategory ? 9 : 0;
     if (cursorY + categoryHeight + 25 > pageHeight - margin.bottom) {
       doc.addPage();
       drawPageHeader(doc.getNumberOfPages());
       cursorY = 22;
     }
 
-    doc.setFillColor(30, 41, 59);
-    doc.roundedRect(margin.left, cursorY, contentWidth, categoryHeight, 1.5, 1.5, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(255, 255, 255);
-    doc.text(group.name.toUpperCase(), margin.left + 3, cursorY + 5.9);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(203, 213, 225);
-    doc.text(`${group.items.length} producto${group.items.length === 1 ? '' : 's'}`, pageWidth - margin.right - 3, cursorY + 5.9, { align: 'right' });
-    cursorY += categoryHeight + 2;
+    if (groupByCategory) {
+      doc.setFillColor(30, 41, 59);
+      doc.roundedRect(margin.left, cursorY, contentWidth, categoryHeight, 1.5, 1.5, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(255, 255, 255);
+      doc.text(group.name.toUpperCase(), margin.left + 3, cursorY + 5.9);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(203, 213, 225);
+      doc.text(`${group.items.length} producto${group.items.length === 1 ? '' : 's'}`, pageWidth - margin.right - 3, cursorY + 5.9, { align: 'right' });
+      cursorY += categoryHeight + 2;
+    }
 
+    const showAvailability = Boolean(availabilityByProductId);
     const showAvailability = Boolean(availabilityByProductId);
     autoTable(doc, {
       startY: cursorY,
       margin: { top: 22, bottom: margin.bottom, left: margin.left, right: margin.right },
-      head: [showAvailability
-        ? ['Producto', 'Descripción', 'Disponibilidad', 'Precio']
-        : ['Producto', 'Descripción', 'Precio']],
+      head: includePhotos
+        ? (showAvailability ? ['Foto', 'Producto', 'Descripción', 'Disponibilidad', 'Precio'] : ['Foto', 'Producto', 'Descripción', 'Precio'])
+        : (showAvailability ? ['Producto', 'Descripción', 'Disponibilidad', 'Precio'] : ['Producto', 'Descripción', 'Precio']),
       body: group.items.map((product) => {
         const code = includeCode ? getProductCode(product) : null;
         const ownerName = includeInventoryOwner ? getInventoryOwnerName(product, inventoryOwners) : '';
         const ownerLabel = ownerName ? ` — ${ownerName}` : '';
         const productLabel = `${product.name}${ownerLabel}`;
-        const cells = [
-          code ? `${productLabel}\nCódigo: ${code}` : productLabel,
-          getProductDescription(product, includeInternalNotes),
-        ];
+        const productCell = code ? `${productLabel}\\nCódigo: ${code}` : productLabel;
+        const cells = includePhotos
+          ? ['', productCell, getProductDescription(product, includeInternalNotes)]
+          : [productCell, getProductDescription(product, includeInternalNotes)];
         if (showAvailability) {
           cells.push(
             availabilityByProductId?.[product.id] === 'on_order'
@@ -230,6 +275,7 @@ export async function createPriceListPdf({
         lineWidth: 0.1,
         overflow: 'linebreak',
         valign: 'middle',
+        ...(includePhotos ? { minCellHeight: 20 } : {}),
       },
       headStyles: {
         fillColor: [241, 245, 249],
@@ -238,15 +284,35 @@ export async function createPriceListPdf({
         fontSize: 8,
       },
       alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: showAvailability ? {
-        0: { cellWidth: contentWidth * 0.34, fontStyle: 'bold' },
-        1: { cellWidth: contentWidth * 0.30 },
-        2: { cellWidth: contentWidth * 0.17, fontStyle: 'bold' },
-        3: { cellWidth: contentWidth * 0.19, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
-      } : {
-        0: { cellWidth: contentWidth * 0.42, fontStyle: 'bold' },
-        1: { cellWidth: contentWidth * 0.38 },
-        2: { cellWidth: contentWidth * 0.20, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
+      columnStyles: includePhotos
+        ? (showAvailability ? {
+          0: { cellWidth: contentWidth * 0.11, minCellHeight: 20 },
+          1: { cellWidth: contentWidth * 0.24, fontStyle: 'bold' },
+          2: { cellWidth: contentWidth * 0.24 },
+          3: { cellWidth: contentWidth * 0.19, fontStyle: 'bold' },
+          4: { cellWidth: contentWidth * 0.22, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
+        } : {
+          0: { cellWidth: contentWidth * 0.11, minCellHeight: 20 },
+          1: { cellWidth: contentWidth * 0.28, fontStyle: 'bold' },
+          2: { cellWidth: contentWidth * 0.35 },
+          3: { cellWidth: contentWidth * 0.26, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
+        })
+        : (showAvailability ? {
+          0: { cellWidth: contentWidth * 0.34, fontStyle: 'bold' },
+          1: { cellWidth: contentWidth * 0.30 },
+          2: { cellWidth: contentWidth * 0.17, fontStyle: 'bold' },
+          3: { cellWidth: contentWidth * 0.19, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
+        } : {
+          0: { cellWidth: contentWidth * 0.42, fontStyle: 'bold' },
+          1: { cellWidth: contentWidth * 0.38 },
+          2: { cellWidth: contentWidth * 0.20, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
+        }),
+      didDrawCell: (data) => {
+        if (!includePhotos || data.section !== 'body' || data.column.index !== 0) return;
+        const imageData = imageDataByProductId.get(group.items[data.row.index]?.id);
+        if (!imageData) return;
+        const size = Math.max(1, Math.min(data.cell.width - 2, data.cell.height - 2));
+        doc.addImage(imageData, 'JPEG', data.cell.x + (data.cell.width - size) / 2, data.cell.y + (data.cell.height - size) / 2, size, size);
       },
       didDrawPage: (data) => {
         if (data.pageNumber > 1) drawPageHeader(data.pageNumber);
