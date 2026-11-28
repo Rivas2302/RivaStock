@@ -21,20 +21,22 @@ export interface NavigationPermissionState {
 export const NAVIGATION_GROUPS = [
   { label: 'Vender', paths: ['/ventas', '/presupuestos', '/pedidos', '/consulta-rapida'] },
   { label: 'Productos', paths: ['/stock', '/ingresos', '/fotos'] },
-  { label: 'Clientes y proveedores', paths: ['/clientes', '/proveedores', '/revendedores', '/revendedores/ofertas', '/compras'] },
+  { label: 'Clientes y proveedores', paths: ['/clientes', '/proveedores', '/revendedores', '/compras'] },
   { label: 'Dinero', paths: ['/caja', '/reportes', '/calculadora'] },
   { label: 'Herramientas', paths: ['/ia', '/ia/conocimientos', '/automatizaciones', '/trazabilidad', '/config'] },
   { label: 'Administración', paths: ['/plataforma'] },
+  { label: 'Súper ofertas', paths: ['/revendedores/ofertas'] },
 ] as const;
 
 export const DESKTOP_NAVIGATION_GROUPS = [
   NAVIGATION_GROUPS[0],
   NAVIGATION_GROUPS[1],
-  { label: 'Relaciones', paths: ['/revendedores', '/revendedores/ofertas'] },
+  { label: 'Relaciones', paths: ['/revendedores'] },
   { ...NAVIGATION_GROUPS[2], paths: NAVIGATION_GROUPS[2].paths.filter(path => path !== '/revendedores') },
   NAVIGATION_GROUPS[3],
   NAVIGATION_GROUPS[4],
   NAVIGATION_GROUPS[5],
+  { label: 'Súper ofertas', paths: ['/revendedores/ofertas'] },
 ] as const;
 
 export const QUICK_ACTIONS: Array<{ label: string; description: string; path: string; module: ModuleKey; businessModule: BusinessModuleKey; write?: boolean }> = [
