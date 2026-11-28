@@ -22,6 +22,9 @@ export interface SupplierFormData {
   category?: string;
   notes?: string;
   paymentTerms?: string;
+  minimumOrder?: string;
+  deliveryMethod?: 'shipping' | 'pickup' | 'both';
+  usualLeadTime?: string;
   catalogUrl?: string;
   facebookUrl?: string;
   instagramUrl?: string;
@@ -41,6 +44,9 @@ export default function SupplierModal({
   const [category, setCategory] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [paymentTerms, setPaymentTerms] = React.useState('');
+  const [minimumOrder, setMinimumOrder] = React.useState('');
+  const [deliveryMethod, setDeliveryMethod] = React.useState<'' | 'shipping' | 'pickup' | 'both'>('');
+  const [usualLeadTime, setUsualLeadTime] = React.useState('');
   const [catalogUrl, setCatalogUrl] = React.useState('');
 const [facebookUrl, setFacebookUrl] = React.useState('');
 const [instagramUrl, setInstagramUrl] = React.useState('');
@@ -56,6 +62,9 @@ const [instagramUrl, setInstagramUrl] = React.useState('');
       setCategory(editingSupplier.category || '');
       setNotes(editingSupplier.notes || '');
       setPaymentTerms(editingSupplier.paymentTerms || '');
+      setMinimumOrder(editingSupplier.minimumOrder || '');
+      setDeliveryMethod(editingSupplier.deliveryMethod || '');
+      setUsualLeadTime(editingSupplier.usualLeadTime || '');
       setCatalogUrl(editingSupplier.catalogUrl || '');
       setFacebookUrl(editingSupplier.facebookUrl || '');
       setInstagramUrl(editingSupplier.instagramUrl || '');
@@ -63,6 +72,7 @@ const [instagramUrl, setInstagramUrl] = React.useState('');
       setName(''); setContactName(''); setPhone('');
       setEmail(''); setAddress(''); setCuit('');
       setCategory(''); setNotes(''); setPaymentTerms('');
+      setMinimumOrder(''); setDeliveryMethod(''); setUsualLeadTime('');
       setCatalogUrl(''); setFacebookUrl(''); setInstagramUrl('');
     }
   }, [editingSupplier, isOpen]);
@@ -95,6 +105,9 @@ const [instagramUrl, setInstagramUrl] = React.useState('');
       category: category.trim() || undefined,
       notes: notes.trim() || undefined,
       paymentTerms: paymentTerms.trim() || undefined,
+      minimumOrder: minimumOrder.trim() || undefined,
+      deliveryMethod: deliveryMethod || undefined,
+      usualLeadTime: usualLeadTime.trim() || undefined,
       catalogUrl: catalogUrl.trim() || undefined,
       facebookUrl: facebookUrl.trim() || undefined,
       instagramUrl: instagramUrl.trim() || undefined,
@@ -166,6 +179,12 @@ const [instagramUrl, setInstagramUrl] = React.useState('');
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Condición de Pago</label>
           <input type="text" value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="30 días, Contado, etc."
             className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white" />
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div><label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Pedido mínimo</label><input type="text" value={minimumOrder} onChange={e => setMinimumOrder(e.target.value)} placeholder="$150.000 o 5 unidades" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></div>
+          <div><label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Envío o retiro</label><select value={deliveryMethod} onChange={e => setDeliveryMethod(e.target.value as '' | 'shipping' | 'pickup' | 'both')} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="">Sin especificar</option><option value="shipping">Envío</option><option value="pickup">Retiro</option><option value="both">Envío o retiro</option></select></div>
+          <div className="sm:col-span-2"><label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Plazo habitual</label><input type="text" value={usualLeadTime} onChange={e => setUsualLeadTime(e.target.value)} placeholder="24–48 h / 5 días" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></div>
         </div>
 
         <div>

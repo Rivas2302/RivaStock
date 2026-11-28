@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSuppliers } from '../hooks/useSuppliers';
 import { usePermission } from '../hooks/usePermission';
 import { Supplier } from '../types';
@@ -7,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, Search, Edit2, Trash2, Building2,
   Phone, Mail, Tag, CreditCard, CheckCircle2,
-  XCircle, Package, ExternalLink, Facebook, Instagram
+  XCircle, Package, ExternalLink, Facebook, Instagram, MessageCircle, ShoppingBag
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import '../styles/business-redesign.css';
@@ -21,6 +22,7 @@ export default function Suppliers() {
     updateSupplier, deleteSupplier, toggleSupplierActive,
   } = useSuppliers();
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const canWrite = usePermission('proveedores', 'write');
   const canDelete = usePermission('proveedores', 'delete');
 
@@ -32,6 +34,8 @@ export default function Suppliers() {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [saving, setSaving] = useState(false);
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  const [showMissingInfo, setShowMissingInfo] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
@@ -65,13 +69,18 @@ export default function Suppliers() {
 
   const stats = useMemo(() => {
     const active = suppliers.filter(s => s.isActive).length;
-    const byCategory: Record<string, number> = {};
-    suppliers.filter(s => s.isActive).forEach(s => {
-      if (s.category) byCategory[s.category] = (byCategory[s.category] || 0) + 1;
-    });
-    const topCategory = Object.entries(byCategory).sort((a, b) => b[1] - a[1])[0];
-    return { total: suppliers.length, active, topCategory: topCategory ? topCategory[0] : null };
+    const missingInfo = suppliers.filter(s => s.isActive && ((!s.phone && !s.email) || !s.catalogUrl || !s.paymentTerms));
+    return { active, missingInfo };
   }, [suppliers]);
+
+  const missingFields = (supplier: Supplier) => [
+    ...(!supplier.phone && !supplier.email ? ['Contacto'] : []),
+    ...(!supplier.catalogUrl ? ['Catálogo'] : []),
+    ...(!supplier.paymentTerms ? ['Condición de pago'] : []),
+  ];
+
+  const openSupplierPurchases = (supplier: Supplier) => navigate('/compras', { state: { supplierOrderSupplierFilter: supplier.name } });
+  const createSupplierPurchase = (supplier: Supplier) => navigate('/compras', { state: { supplierOrderPrefill: { supplierName: supplier.name } } });
 
   const openNew = () => { setEditingSupplier(null); setIsModalOpen(true); };
   const openEdit = (s: Supplier) => { setEditingSupplier(s); setIsModalOpen(true); };
@@ -82,12 +91,12 @@ export default function Suppliers() {
       if (editingSupplier) {
         await updateSupplier(editingSupplier.id, data.name, data.contactName, data.phone,
           data.email, data.address, data.cuit, data.category, data.notes, data.paymentTerms,
-          data.catalogUrl, data.facebookUrl, data.instagramUrl);
+          data.catalogUrl, data.facebookUrl, data.instagramUrl, data.minimumOrder, data.deliveryMethod, data.usualLeadTime);
         showMessage('Proveedor actualizado');
       } else {
         await createSupplier(data.name, data.contactName, data.phone, data.email,
           data.address, data.cuit, data.category, data.notes, data.paymentTerms,
-          data.catalogUrl, data.facebookUrl, data.instagramUrl);
+          data.catalogUrl, data.facebookUrl, data.instagramUrl, data.minimumOrder, data.deliveryMethod, data.usualLeadTime);
         showMessage('Proveedor creado');
       }
       setIsModalOpen(false);
@@ -150,12 +159,14 @@ export default function Suppliers() {
         suppliers={suppliers}
         categories={categories}
         activeCount={stats.active}
-        topCategory={stats.topCategory}
+        needsAttentionCount={stats.missingInfo.length}
         categoryFilter={categoryFilter}
         statusFilter={statusFilter}
         search={search}
         canWrite={canWrite}
         canDelete={canDelete}
+        onOpenMissingInfo={() => setShowMissingInfo(true)}
+        onOpenDetail={setSelectedSupplier}
         onCategoryFilter={setCategoryFilter}
         onStatusFilter={setStatusFilter}
         onSearch={setSearch}
@@ -178,20 +189,17 @@ export default function Suppliers() {
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
-          <p className="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wide mb-1">Total</p>
-          <p className="text-3xl font-black text-slate-900 dark:text-white">{stats.total}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
-          <p className="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wide mb-1">Activos</p>
+      {/* Summary and missing purchase information */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Proveedores activos</p>
           <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400">{stats.active}</p>
         </div>
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
-          <p className="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wide mb-1">Categoría Principal</p>
-          <p className="text-xl font-bold text-slate-900 dark:text-white">{stats.topCategory ?? '—'}</p>
-        </div>
+        <button type="button" onClick={() => setShowMissingInfo(true)} className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left shadow-sm transition hover:border-amber-400 dark:border-amber-900/50 dark:bg-amber-950/20">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Faltan datos de compra</p>
+          <p className="mt-1 text-3xl font-black text-amber-800 dark:text-amber-200">{stats.missingInfo.length}</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Contacto, catálogo o condición de pago pendientes</p>
+        </button>
       </div>
 
       {/* Filters */}
@@ -237,7 +245,7 @@ export default function Suppliers() {
               {filteredSuppliers.map(s => (
                 <tr key={s.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4">
-                    <p className="font-bold text-slate-900 dark:text-white">{s.name}</p>
+                    <button type="button" onClick={() => setSelectedSupplier(s)} className="text-left font-bold text-slate-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-300">{s.name}</button>
                     {s.cuit && <p className="text-xs text-slate-400">{s.cuit}</p>}
                   </td>
                   <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{s.contactName || '—'}</td>
@@ -337,6 +345,41 @@ export default function Suppliers() {
       </div>
       </>}
 
+      <Modal isOpen={Boolean(selectedSupplier)} onClose={() => setSelectedSupplier(null)} title="Ficha del proveedor" className="max-w-2xl">
+        {selectedSupplier && <div className="space-y-5">
+          <div><h2 className="text-2xl font-bold text-slate-900 dark:text-white">{selectedSupplier.name}</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{selectedSupplier.category || 'Sin categoría'} · {selectedSupplier.isActive ? 'Activo' : 'Inactivo'}</p></div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {selectedSupplier.contactName && <Detail label="Contacto" value={selectedSupplier.contactName} />}
+            {selectedSupplier.phone && <Detail label="Teléfono" value={selectedSupplier.phone} />}
+            {selectedSupplier.email && <Detail label="Email" value={selectedSupplier.email} />}
+            {selectedSupplier.address && <Detail label="Dirección" value={selectedSupplier.address} />}
+            {selectedSupplier.cuit && <Detail label="CUIT / CUIL" value={selectedSupplier.cuit} />}
+            {selectedSupplier.paymentTerms && <Detail label="Condición de pago" value={selectedSupplier.paymentTerms} />}
+            {selectedSupplier.minimumOrder && <Detail label="Pedido mínimo" value={selectedSupplier.minimumOrder} />}
+            {selectedSupplier.deliveryMethod && <Detail label="Envío o retiro" value={{shipping:'Envío',pickup:'Retiro',both:'Envío o retiro'}[selectedSupplier.deliveryMethod]} />}
+            {selectedSupplier.usualLeadTime && <Detail label="Plazo habitual" value={selectedSupplier.usualLeadTime} />}
+            {selectedSupplier.notes && <Detail label="Notas" value={selectedSupplier.notes} />}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {selectedSupplier.phone && <a href={`https://wa.me/${selectedSupplier.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 font-semibold text-white"><MessageCircle size={17}/> Escribir por WhatsApp</a>}
+            {selectedSupplier.catalogUrl && <a href={selectedSupplier.catalogUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 font-semibold dark:border-slate-700"><ExternalLink size={17}/> Abrir catálogo</a>}
+            <button type="button" onClick={() => selectedSupplier && openSupplierPurchases(selectedSupplier)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 font-semibold dark:border-slate-700"><Package size={17}/> Ver compras</button>
+            {canWrite && <button type="button" onClick={() => selectedSupplier && createSupplierPurchase(selectedSupplier)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 font-semibold text-white"><ShoppingBag size={17}/> Nueva compra</button>}
+          </div>
+          {canWrite && <button type="button" onClick={() => { const supplier = selectedSupplier; setSelectedSupplier(null); openEdit(supplier); }} className="min-h-11 w-full rounded-xl border border-slate-200 px-4 font-semibold dark:border-slate-700">Editar proveedor</button>}
+        </div>}
+      </Modal>
+
+      <Modal isOpen={showMissingInfo} onClose={() => setShowMissingInfo(false)} title="Faltan datos de compra" className="max-w-xl">
+        <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">Proveedores activos sin contacto, catálogo o condición de pago registrada.</p>
+        <div className="max-h-[55vh] space-y-2 overflow-y-auto">
+          {stats.missingInfo.map(supplier => <button key={supplier.id} type="button" onClick={() => { setShowMissingInfo(false); setSelectedSupplier(supplier); }} className="flex min-h-14 w-full items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-left dark:border-slate-700">
+            <span className="font-semibold text-slate-900 dark:text-white">{supplier.name}</span><span className="flex flex-wrap justify-end gap-1">{missingFields(supplier).map(field => <span key={field} className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">{field}</span>)}</span>
+          </button>)}
+          {!stats.missingInfo.length && <p className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200">Todas las fichas activas tienen esos datos cargados.</p>}
+        </div>
+      </Modal>
+
       <SupplierModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -350,4 +393,8 @@ export default function Suppliers() {
       </Modal>
     </div>
   );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p><p className="mt-1 whitespace-pre-wrap font-medium text-slate-900 dark:text-white">{value}</p></div>;
 }

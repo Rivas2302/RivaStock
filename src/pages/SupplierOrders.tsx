@@ -33,6 +33,7 @@ export default function SupplierOrders() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
+  const [supplierFilterName, setSupplierFilterName] = useState('');
   const [filter, setFilter] = useState('pending');
   const [editing, setEditing] = useState<SupplierOrder | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -52,6 +53,16 @@ export default function SupplierOrders() {
     return () => { if (document) URL.revokeObjectURL(document.url); };
   }, [document]);
   const loadSequence = useRef(0);
+
+  useEffect(() => {
+    const state = location.state as { supplierOrderSupplierFilter?: unknown } | null;
+    if (typeof state?.supplierOrderSupplierFilter === 'string' && state.supplierOrderSupplierFilter.trim()) {
+      setSupplierFilterName(state.supplierOrderSupplierFilter.trim());
+      setSearch('');
+      setFilter('all');
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     const state = location.state as { supplierOrderPrefill?: { supplierName?: unknown; reference?: unknown; notes?: unknown } } | null;
@@ -199,9 +210,11 @@ export default function SupplierOrders() {
   const pending = orders.filter(isPendingOrder);
   const ready = pending.filter(o => o.status === 'ready');
   const term = search.trim().toLocaleLowerCase('es');
+  const normalizedSupplierFilter = supplierFilterName.trim().toLocaleLowerCase('es');
   const visible = sortSupplierOrders(orders.filter(o => {
     const matchesFilter = filter === 'all' || (filter === 'pending' ? isPendingOrder(o) : filter === 'history' ? !isPendingOrder(o) : o.status === 'ready');
-    return matchesFilter && `${o.supplier_name} ${o.reference} ${o.tracking_number ?? ''} ${o.notes}`.toLocaleLowerCase('es').includes(term);
+    const matchesSupplier = !normalizedSupplierFilter || o.supplier_name.trim().toLocaleLowerCase('es') === normalizedSupplierFilter;
+    return matchesFilter && matchesSupplier && `${o.supplier_name} ${o.reference} ${o.tracking_number ?? ''} ${o.notes}`.toLocaleLowerCase('es').includes(term);
   }));
 
   return <div className="mx-auto max-w-6xl space-y-6 text-slate-900 dark:text-slate-100">
@@ -217,6 +230,7 @@ export default function SupplierOrders() {
       <select aria-label="Filtrar pedidos" className={`${inputClass} sm:w-auto`} value={filter} onChange={e => setFilter(e.target.value)}><option value="pending">Pendientes</option><option value="ready">Para retirar</option><option value="history">Historial</option><option value="all">Todos</option></select>
       <button className={buttonClass} disabled={loading || busy} onClick={() => void refresh()}>Actualizar listado</button>
     </div>
+    {supplierFilterName && <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm dark:border-indigo-900/50 dark:bg-indigo-950/30"><span>Compras del proveedor <strong>{supplierFilterName}</strong></span><button type="button" className="font-semibold text-indigo-700 underline dark:text-indigo-300" onClick={() => setSupplierFilterName('')}>Quitar filtro</button></div>}
     {loadError ? <p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-700">{loadError}</p> : loading ? <p role="status">Cargando pedidos…</p> : <>
       {!visible.length && <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center"><Package className="mx-auto mb-3 text-slate-400" /><p className="font-semibold">{orders.length ? 'No hay pedidos con este filtro.' : 'Registra tu primer pedido'}</p><p className="mt-2 text-sm text-slate-500">Solo necesitas el proveedor y la fecha. Puedes agregar el PDF y la guía después.</p></div>}
       <div className="space-y-3">{visible.map(order => <article key={order.id} className={`rounded-2xl border bg-white p-4 sm:p-5 dark:bg-slate-900 ${order.status === 'ready' ? 'border-amber-400' : 'border-slate-200 dark:border-slate-800'}`}>
