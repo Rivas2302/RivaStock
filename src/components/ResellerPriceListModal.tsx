@@ -2708,6 +2708,41 @@ export default function ResellerPriceListModal({
               </div>
             </section>
 
+            <section aria-labelledby="reseller-settings-category-title" className="grid gap-5 border-b border-[var(--line)] py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-12">
+              <div>
+                <h3 id="reseller-settings-category-title" className="text-base font-bold">Organización del catálogo</h3>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">Elegí si los revendedores ven todo junto o navegan por tus categorías de la tienda.</p>
+              </div>
+              <div className="space-y-4">
+                <div role="group" aria-label="Modo de categorías para revendedores" className="flex flex-wrap gap-2">
+                  {([['all', 'Todo junto'], ['categories', 'Por categorías']] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={resellerCategorySettings.mode === mode} disabled={!canWrite} onClick={() => setResellerCategorySettings(current => ({ ...current, mode }))} className={cn('min-h-10 rounded-lg border px-3 text-sm font-semibold', resellerCategorySettings.mode === mode ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'border-[var(--line)] text-[var(--ink-muted)]')}>{label}</button>)}
+                </div>
+                {resellerCategorySettings.mode === 'categories' && <>
+                  <p className="text-xs text-[var(--ink-muted)]">Elegí las categorías que se muestran y ordenalas. Los productos sin una de estas categorías quedan en Todos.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {categories.map(category => <label key={category.id} className="flex min-h-11 items-center gap-2 rounded-lg border border-[var(--line)] px-3 text-sm">
+                      <input type="checkbox" checked={resellerCategorySettings.categoryIds.includes(category.id)} disabled={!canWrite} onChange={() => setResellerCategorySettings(current => ({ ...current, categoryIds: current.categoryIds.includes(category.id) ? current.categoryIds.filter(id => id !== category.id) : [...current.categoryIds, category.id] }))} className="size-4 accent-[var(--accent)]" />
+                      <span className="min-w-0 flex-1 truncate">{category.name}</span>
+                    </label>)}
+                  </div>
+                  {resellerCategorySettings.categoryIds.length > 0 && <div className="space-y-2">
+                    <p className="text-xs font-semibold text-[var(--ink-muted)]">Orden visible</p>
+                    {resellerCategorySettings.categoryIds.map((categoryId, index) => <div key={categoryId} className="flex min-h-10 items-center gap-2 rounded-lg bg-[var(--surface-2)] px-3 text-sm">
+                      <span className="min-w-0 flex-1 truncate">{categories.find(category => category.id === categoryId)?.name ?? 'Categoría'}</span>
+                      <button type="button" aria-label={`Mover ${categories.find(category => category.id === categoryId)?.name ?? 'categoría'} hacia arriba`} disabled={!canWrite || index === 0} onClick={() => setResellerCategorySettings(current => { const next = [...current.categoryIds]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return { ...current, categoryIds: next }; })} className="grid size-8 place-items-center rounded-md border border-[var(--line)] disabled:opacity-40">↑</button>
+                      <button type="button" aria-label={`Mover ${categories.find(category => category.id === categoryId)?.name ?? 'categoría'} hacia abajo`} disabled={!canWrite || index === resellerCategorySettings.categoryIds.length - 1} onClick={() => setResellerCategorySettings(current => { const next = [...current.categoryIds]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return { ...current, categoryIds: next }; })} className="grid size-8 place-items-center rounded-md border border-[var(--line)] disabled:opacity-40">↓</button>
+                    </div>)}
+                  </div>}
+                  <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={resellerCategorySettings.showOtherProducts} disabled={!canWrite} onChange={event => setResellerCategorySettings(current => ({ ...current, showOtherProducts: event.target.checked }))} className="mt-1 size-4 accent-[var(--accent)]" /><span>Mostrar también “Otros productos”</span></label>
+                </>}
+                {!catalogConfig && <p role="note" className="text-xs text-amber-700 dark:text-amber-300">Configurá primero el catálogo público para guardar esta organización.</p>}
+                <div className="flex flex-wrap items-center gap-3">
+                  <button type="button" onClick={() => void saveResellerCatalogSettings()} disabled={!canWrite || !catalogConfig || catalogCategorySaveStatus === 'saving'} className="min-h-10 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{catalogCategorySaveStatus === 'saving' ? 'Guardando…' : 'Guardar organización'}</button>
+                  <p role="status" className="text-xs text-[var(--ink-muted)]">{catalogCategorySaveStatus === 'error' ? 'No se pudo guardar.' : catalogCategorySaveStatus === 'saved' ? 'Cambios guardados.' : ''}</p>
+                </div>
+              </div>
+            </section>
+
             <section aria-labelledby="reseller-settings-buying-policy-title" className="grid gap-5 border-b border-[var(--line)] py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-12">
               <div>
                 <h3 id="reseller-settings-buying-policy-title" className="text-base font-bold">Cómo comprar</h3>
@@ -3153,6 +3188,27 @@ export default function ResellerPriceListModal({
                 </button>
               </div>
 
+              <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+                <label className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-xs font-semibold text-[var(--ink-muted)]">
+                  <span className="shrink-0">Categoría</span>
+                  <select aria-label="Filtrar por categoría" value={categoryFilter} onChange={event => { setCategoryFilter(event.target.value); setPriceProductPage(0); }} className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ink)] outline-none">
+                    <option value="all">Todas las categorías</option>
+                    {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    <option value="uncategorized">Sin categoría</option>
+                  </select>
+                </label>
+                <button type="button" aria-expanded={advancedFiltersOpen} onClick={() => setAdvancedFiltersOpen(value => !value)} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">{advancedFiltersOpen ? 'Ocultar más filtros' : 'Más filtros'}</button>
+              </div>
+              {advancedFiltersOpen && <div className="grid gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 sm:grid-cols-2 xl:grid-cols-4">
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Precio revendedor desde<input type="number" min="0" value={priceMinFilter} onChange={event => { setPriceMinFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Precio revendedor hasta<input type="number" min="0" value={priceMaxFilter} onChange={event => { setPriceMaxFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Disponibilidad<select value={availabilityFilter} onChange={event => { setAvailabilityFilter(event.target.value as typeof availabilityFilter); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]"><option value="all">Cualquiera</option><option value="in_stock">Con stock</option><option value="on_order">Por pedido</option><option value="out_of_stock">Agotado</option></select></label>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="flex min-h-10 items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={withoutPhotoFilter} onChange={event => setWithoutPhotoFilter(event.target.checked)} className="size-4 accent-[var(--accent)]" />Sin foto</label>
+                  <label className="flex min-h-10 items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={uncategorizedFilter} onChange={event => setUncategorizedFilter(event.target.checked)} className="size-4 accent-[var(--accent)]" />Sin categoría</label>
+                  <button type="button" onClick={() => { setCategoryFilter('all'); setPriceMinFilter(''); setPriceMaxFilter(''); setAvailabilityFilter('all'); setWithoutPhotoFilter(false); setUncategorizedFilter(false); setPriceListInclusionFilter('all'); setProductListSourceFilter('all'); setAdvisorFilter('all'); setMarginFilter('all'); setSearch(''); setPriceProductPage(0); }} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold">Limpiar filtros</button>
+                </div>
+              </div>}
               {categories.length > 0 && supplierCategoryReviewGroups.length > 0 && <section className="flex flex-col gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-[var(--ink)]">Categorías de proveedores</p>
@@ -3187,6 +3243,11 @@ export default function ResellerPriceListModal({
                   onClick={() => { setPriceListInclusionFilter('included'); setAdvisorFilter('all'); setMarginFilter('all'); setPriceProductPage(0); }}
                   className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'included' && advisorFilter === 'all' && marginFilter === 'all' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   En la lista · {items.length}
+                </button>
+                <button type="button" aria-pressed={priceListInclusionFilter === 'excluded'}
+                  onClick={() => { setPriceListInclusionFilter('excluded'); setAdvisorFilter('all'); setMarginFilter('all'); setPriceProductPage(0); }}
+                  className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'excluded' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                  Fuera de la lista · {Math.max(0, visibleProducts.length - items.length)}
                 </button>
                 <button type="button" aria-pressed={marginFilter === 'low'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('all'); setMarginFilter('low'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', marginFilter === 'low' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   Ganancia baja · {lowMarginProductCount}
@@ -3250,7 +3311,7 @@ export default function ResellerPriceListModal({
                           <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-[var(--ink)]">{formatCurrency(resellerPrice)}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink)]">{profit === null ? '—' : formatCurrency(profit)}</td>
                           <td className="px-3 py-3"><div className="space-y-1"><span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold', item ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{item ? 'En la lista' : 'Fuera de la lista'}</span><p className="text-xs text-[var(--ink-muted)]">{item?.availability === 'on_order' ? 'Por pedido' : item ? 'Disponible' : statusLabel}</p>{item && marginSuggestion?.low && <p className="max-w-52 text-xs text-[var(--ink-muted)]">Sugerido: {formatCurrency(marginSuggestion.suggestedResellerPrice)} (ganás {formatCurrency(marginSuggestion.suggestedResellerPrice - marginSuggestion.cost)})</p>}</div></td>
-                          <td className="space-y-1 px-3 py-3 text-right"><button type="button" onClick={() => setEditingPriceProductId(expanded ? null : product.id)} disabled={!item || !canWrite || bulkBusy} aria-expanded={expanded} className="min-h-8 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">{expanded ? 'Cerrar' : 'Editar'}</button>{item && marginSuggestion?.low && <button type="button" onClick={() => requestMarginPriceApply([product.id])} disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved'} className="block min-h-8 rounded-lg bg-[var(--primary)] px-2 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-50">Aplicar</button>}</td>
+                          <td className="space-y-1 px-3 py-3 text-right"><button type="button" onClick={() => onEditCatalogProduct(product)} disabled={!canWrite || bulkBusy} className="min-h-8 rounded-lg border border-[var(--line)] px-2 text-[11px] font-semibold text-[var(--ink)] disabled:opacity-45">Editar ficha</button>{item ? <button type="button" onClick={() => setEditingPriceProductId(expanded ? null : product.id)} disabled={!canWrite || bulkBusy} aria-expanded={expanded} className="block min-h-8 w-full rounded-lg border border-[var(--line)] px-2 text-[11px] font-semibold text-[var(--ink)] disabled:opacity-45">{expanded ? 'Cerrar precio' : 'Editar precio'}</button> : <button type="button" onClick={() => toggleProduct(product)} disabled={!canWrite || bulkBusy} className="block min-h-8 w-full rounded-lg bg-[var(--primary)] px-2 text-[11px] font-semibold text-[var(--primary-ink)] disabled:opacity-50">Agregar a la lista</button>}{item && marginSuggestion?.low && <button type="button" onClick={() => requestMarginPriceApply([product.id])} disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved'} className="block min-h-8 w-full rounded-lg bg-[var(--primary)] px-2 text-[11px] font-semibold text-[var(--primary-ink)] disabled:opacity-50">Aplicar</button>}</td>
                         </tr>
                         {expanded && item && <tr className="border-b border-[var(--line)] bg-[var(--surface-2)]/60"><td colSpan={8} className="px-4 py-4">
                           <div className="grid gap-3 sm:grid-cols-3">
@@ -3299,6 +3360,12 @@ export default function ResellerPriceListModal({
                         <span className="whitespace-nowrap">{item ? 'En la lista' : 'Fuera'}</span>
                         {item && <span className="truncate">· {item.availability === 'on_order' ? 'Por pedido' : 'Disponible'}</span>}
                       </p>
+                      <div className="mt-3 grid grid-cols-2 gap-2 pl-7">
+                        <button type="button" onClick={() => onEditCatalogProduct(product)} disabled={!canWrite || bulkBusy} className="min-h-9 rounded-lg border border-[var(--line)] px-2 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">Editar ficha</button>
+                        {item
+                          ? <button type="button" onClick={() => setEditingPriceProductId(product.id)} disabled={!canWrite || bulkBusy} className="min-h-9 rounded-lg border border-[var(--line)] px-2 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">Editar precio</button>
+                          : <button type="button" onClick={() => toggleProduct(product)} disabled={!canWrite || bulkBusy} className="min-h-9 rounded-lg bg-[var(--primary)] px-2 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-50">Agregar a la lista</button>}
+                      </div>
                       {item && marginSuggestion?.low && <div className="mt-2 flex items-center justify-between gap-2 pl-7">
                         <p className="min-w-0 text-xs text-[var(--ink-muted)]">Sugerido: {formatCurrency(marginSuggestion.suggestedResellerPrice)} · ganás {formatCurrency(marginSuggestion.suggestedResellerPrice - marginSuggestion.cost)}</p>
                         <button type="button" onClick={() => requestMarginPriceApply([product.id])} disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved'} className="min-h-8 shrink-0 rounded-lg bg-[var(--primary)] px-2.5 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-50">Aplicar</button>
