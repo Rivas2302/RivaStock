@@ -243,17 +243,17 @@ export async function createPriceListPdf({
     autoTable(doc, {
       startY: cursorY,
       margin: { top: 22, bottom: margin.bottom, left: margin.left, right: margin.right },
-      head: includePhotos
+      head: [includePhotos
         ? (showAvailability ? ['Foto', 'Producto', 'Descripción', 'Disponibilidad', 'Precio'] : ['Foto', 'Producto', 'Descripción', 'Precio'])
-        : (showAvailability ? ['Producto', 'Descripción', 'Disponibilidad', 'Precio'] : ['Producto', 'Descripción', 'Precio']),
+        : (showAvailability ? ['Producto', 'Descripción', 'Disponibilidad', 'Precio'] : ['Producto', 'Descripción', 'Precio'])],
       body: group.items.map((product) => {
         const code = includeCode ? getProductCode(product) : null;
         const ownerName = includeInventoryOwner ? getInventoryOwnerName(product, inventoryOwners) : '';
         const ownerLabel = ownerName ? ` — ${ownerName}` : '';
         const productLabel = `${product.name}${ownerLabel}`;
-        const productCell = code ? `${productLabel}\\nCódigo: ${code}` : productLabel;
+        const productCell = code ? `${productLabel}\nCódigo: ${code}` : productLabel;
         const productUrl = productUrlByProductId?.[product.id];
-        const photoProductCell = productUrl ? `${productLabel}\\nVer precio actualizado` : productCell;
+        const photoProductCell = productUrl ? `${productLabel}\nVer precio actualizado` : productCell;
         const cells = includePhotos
           ? ['', photoProductCell, getProductDescription(product, includeInternalNotes)]
           : [productCell, getProductDescription(product, includeInternalNotes)];
