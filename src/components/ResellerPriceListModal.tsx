@@ -2539,7 +2539,7 @@ export default function ResellerPriceListModal({
         minimumOrderQuantity,
       });
       const productUrlByProductId = publicCatalogUrl && publicEnabled
-        ? Object.fromEntries(exportProducts.map(product => {
+        ? exportProducts.reduce<Record<string, string>>((urls, product) => {
           const catalogUrl = new URL(publicCatalogUrl);
           const catalogBase = `${catalogUrl.origin}${catalogUrl.pathname.replace(/\/+$/, '')}/`;
           const productUrl = new URL(encodeURIComponent(product.id), catalogBase);
@@ -2547,8 +2547,9 @@ export default function ResellerPriceListModal({
           const supplierListId = itemByProductId.get(product.id)?.supplierListId ?? supplierListByProductId.get(product.id)?.id;
           const round = supplierRounds.find(candidate => candidate.supplierListId === supplierListId && candidate.status === 'open' && Date.parse(candidate.closesAt) > Date.now());
           if (round) productUrl.searchParams.set('round', round.id);
-          return [product.id, productUrl.toString()];
-        }))
+          urls[product.id] = productUrl.toString();
+          return urls;
+        }, {})
         : undefined;
       const pdf = await createPriceListPdf({
         products: exportProducts,
