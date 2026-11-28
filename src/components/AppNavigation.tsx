@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowDownCircle, BarChart3, Building2, Calculator, ClipboardList, FileText, History,
+  ArrowDownCircle, BarChart3, Building2, Calculator, ClipboardList, FileText, History, Tag,
   Images, LayoutDashboard, LogOut, Package, ScanLine, Settings, ShoppingCart, Sparkles,
   Truck, Users, Wallet, Zap, Search, X,
 } from 'lucide-react';
@@ -32,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Clientes', path: '/clientes', icon: Users, module: 'clientes', businessModule: 'customers' },
   { name: 'Proveedores', path: '/proveedores', icon: Building2, module: 'proveedores', businessModule: 'suppliers' },
   { name: 'Revendedores', path: '/revendedores', icon: Users, module: 'stock', businessModule: 'resellers' },
+  { name: 'Súper ofertas', path: '/revendedores/ofertas', icon: Tag, module: 'stock', businessModule: 'resellers' },
   { name: 'Compras a proveedores', path: '/compras', icon: Truck, module: 'proveedores', businessModule: 'supplierOrders' },
   { name: 'Ingresos de mercadería', path: '/ingresos', icon: ArrowDownCircle, module: 'ingresos', businessModule: 'intake' },
   { name: 'Flujo de Caja', path: '/caja', icon: Wallet, module: 'caja', businessModule: 'cash' },
@@ -100,7 +101,7 @@ export default function AppNavigation(props: AppNavigationProps) {
           <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{group.label}</p>
           {group.items.map(item => {
             const Icon = item.icon;
-            const active = item.path === '/' ? props.pathname === '/' : props.pathname === item.path || props.pathname.startsWith(`${item.path}/`);
+            const active = item.path === '/' ? props.pathname === '/' : item.path === '/revendedores' ? props.pathname === '/revendedores' : props.pathname === item.path || props.pathname.startsWith(`${item.path}/`);
             return <Link key={item.path} to={item.path} aria-current={active ? 'page' : undefined} className={cn('nav-item flex min-h-11 items-center gap-3 px-3 py-2 transition-colors group', active ? 'nav-item-active text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white')}><Icon size={19} strokeWidth={1.8} /><span className="font-medium">{item.name}</span>{item.path === '/pedidos' && Boolean(props.unreadOrderCount) && <span aria-label={`${props.unreadOrderCount} pedidos nuevos`} className="ml-auto grid min-w-5 place-items-center rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-black text-white">{props.unreadOrderCount}</span>}</Link>;
           })}
         </section>)}
