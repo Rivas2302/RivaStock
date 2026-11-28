@@ -2227,7 +2227,10 @@ export default function ResellerPriceListModal({
             || existing.name.trim().toLocaleLowerCase('es-AR') !== previousSourceName.toLocaleLowerCase('es-AR')
           ));
           const previousImportCategoryId = String(existing?.customFields?.supplierImportCategoryId ?? '').trim();
-          const preserveCustomCategory = Boolean(existing && previousImportCategoryId && existing.categoryId !== previousImportCategoryId);
+          const preserveCustomCategory = Boolean(existing && (
+            existing.customFields?.supplierImportCustomCategory === true
+            || (previousImportCategoryId && existing.categoryId !== previousImportCategoryId)
+          ));
           const resolvedCategory = preserveCustomCategory
             ? { categoryId: existing!.categoryId, category: existing!.category }
             : resolveSupplierImportCategory(sourceCategory, entry.row.targetCategoryId, categories);
