@@ -238,7 +238,6 @@ export async function createPriceListPdf({
     }
 
     const showAvailability = Boolean(availabilityByProductId);
-    const showAvailability = Boolean(availabilityByProductId);
     autoTable(doc, {
       startY: cursorY,
       margin: { top: 22, bottom: margin.bottom, left: margin.left, right: margin.right },
