@@ -642,10 +642,37 @@ useEffect(() => {
     () => products.filter(product => isSuperOffersRoute || config?.showOutOfStock || product.stock > 0 || product.availability === 'on_order'),
     [config?.showOutOfStock, isSuperOffersRoute, products],
   );
-  const resellerCategoryOptions = useMemo(
-    () => buildResellerCatalogCategories(catalogProducts, categories),
-    [catalogProducts, categories],
-  );
+  const resellerCategoryOptions = useMemo(() => {
+    const settings = config?.resellerCategorySettings;
+    if (settings?.mode !== 'categories') return [];
+    const categoryIds = settings.categoryIds.filter(id => categories.some(category => category.id === id));
+    const options = categoryIds.flatMap(id => {
+      const category = categories.find(item => item.id === id);
+      if (!category) return [];
+      const productsInCategory = catalogProducts.filter(product => product.categoryId === id);
+      return [{
+        id: `owner:${id}`,
+        name: category.name,
+        count: productsInCategory.length,
+        photoUrl: getCategoryPhotoUrls(id, catalogProducts, config?.categoryPhotoOverrides?.[id], config?.categoryPhotosEnabled !== false)[0]
+          ?? productsInCategory.find(product => product.images?.[0] || product.imageUrl)?.images?.[0]
+          ?? productsInCategory.find(product => product.imageUrl)?.imageUrl
+          ?? null,
+      }];
+    });
+    const otherProducts = catalogProducts.filter(product => !product.categoryId || !categoryIds.includes(product.categoryId));
+    if (settings.showOtherProducts && otherProducts.length > 0) {
+      options.push({
+        id: 'reseller:other',
+        name: 'Otros productos',
+        count: otherProducts.length,
+        photoUrl: otherProducts.find(product => product.images?.[0] || product.imageUrl)?.images?.[0]
+          ?? otherProducts.find(product => product.imageUrl)?.imageUrl
+          ?? null,
+      });
+    }
+    return options;
+  }, [catalogProducts, categories, config?.categoryPhotoOverrides, config?.categoryPhotosEnabled, config?.resellerCategorySettings]);
   const categoryOptions = useMemo(() => channel === 'reseller'
     ? resellerCategoryOptions
     : categories.filter(category => !isUncategorizedCategoryName(category.name)).map(category => ({
@@ -748,8 +775,13 @@ useEffect(() => {
         product.name.toLowerCase().includes(searchValue) ||
         product.description?.toLowerCase().includes(searchValue);
       const matchesPhoto = showWithoutPhoto || hasPhoto;
+      const resellerCategoryIds = config?.resellerCategorySettings?.categoryIds ?? [];
       const matchesCategory = activeCategory === 'all' || (channel === 'reseller'
-        ? getResellerProductCategoryKey(product, categories) === activeCategory
+        ? activeCategory === 'reseller:other'
+          ? !product.categoryId || !resellerCategoryIds.includes(product.categoryId)
+          : activeCategory.startsWith('owner:')
+            ? product.categoryId === activeCategory.slice('owner:'.length)
+            : getResellerProductCategoryKey(product, categories) === activeCategory
         : product.categoryId === activeCategory);
       const matchesAvailability = channel !== 'reseller'
         || matchesResellerAvailabilityFilter(product, availabilityFilter);
@@ -757,7 +789,7 @@ useEffect(() => {
     });
 
     return filteredProducts;
-  }, [activeCategory, availabilityFilter, catalogProducts, categories, channel, deferredSearch, isSuperOffersRoute, superOfferActive]);
+  }, [activeCategory, availabilityFilter, catalogProducts, categories, channel, config?.resellerCategorySettings?.categoryIds, deferredSearch, isSuperOffersRoute, superOfferActive]);
   const [loadedProductBatch, setLoadedProductBatch] = useState<{ items: PublicCatalogProduct[]; count: number } | null>(null);
   const visibleProductCount = loadedProductBatch?.items === filteredProducts ? loadedProductBatch.count : 48;
   const productRows = filteredProducts.slice(0, visibleProductCount);
@@ -1666,7 +1698,8 @@ if (loading) {
           {featuredProducts.length > 0 && <a href="#catalog-section-all" className="flex min-h-24 flex-col justify-center rounded-2xl bg-[var(--brand-soft)] p-5 text-[var(--brand-strong)] transition-transform hover:-translate-y-0.5"><span className="text-xs font-bold uppercase tracking-wider">Selección de temporada</span><span className="mt-1 text-lg font-black">Elegidos para vos</span><span className="mt-1 text-sm">Descubrí los productos destacados.</span></a>}
           {offerProducts.length > 0 && <a href="#catalog-section-offers" className="flex min-h-24 flex-col justify-center rounded-2xl bg-[var(--action-bg)] p-5 text-[var(--action-ink)] transition-transform hover:-translate-y-0.5"><span className="text-xs font-bold uppercase tracking-wider">Por tiempo limitado</span><span className="mt-1 text-lg font-black">Ofertas relámpago</span><span className="mt-1 text-sm">Hasta {maxOfferDiscount}% de descuento.</span></a>}
         </section>}
-        {!isSuperOffersRoute && channel !== 'reseller' && visibleSections.find(section => section.id === 'categories')?.visible && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
+        {!isSuperOffersRoute && ((channel !== 'reseller' && visibleSections.find(section => section.id === 'categories')?.visible)
+          || (channel === 'reseller' && config.resellerCategorySettings?.mode === 'categories')) && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
           <h2 className="mb-4 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.categories}</h2>
           <div className="relative">
             {categoryCanScrollLeft && <button type="button" aria-label="Desplazar categorías a la izquierda" onClick={() => categoryStripRef.current?.scrollBy({ left: -Math.max(260, Math.floor((categoryStripRef.current?.clientWidth ?? 400) * 0.72)), behavior: 'smooth' })} className="absolute left-0 top-6 z-10 hidden size-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)]/95 text-2xl font-bold shadow-lg md:grid">‹</button>}
