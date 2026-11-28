@@ -741,6 +741,14 @@ export default function ResellerPriceListModal({
     if (displayMode === 'page' && location.pathname === '/revendedores/ofertas') setPageTab('super-offers');
   }, [displayMode, location.pathname]);
 
+  useEffect(() => {
+    if (!pdfExportOpen || displayMode !== 'page' || pageTab !== 'prices') return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('reseller-pdf-export-options')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [displayMode, pageTab, pdfExportOpen]);
+
   const saveResellerCatalogSettings = async () => {
     if (!catalogConfig || !canWrite) return;
     setCatalogCategorySaveStatus('saving');
@@ -2795,7 +2803,7 @@ export default function ResellerPriceListModal({
                 </div>
                 <div className="flex min-h-16 items-center justify-between gap-4 py-3">
                   <div><p className="text-sm font-semibold">Lista en PDF</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Para mandar por WhatsApp a quien no usa el catálogo.</p></div>
-                  <div className="flex shrink-0 gap-2"><button type="button" onClick={() => setPdfExportOpen(true)} disabled={items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Exportar</button></div>
+                  <div className="flex shrink-0 gap-2"><button type="button" onClick={() => { setPageTab('prices'); setPdfExportOpen(true); }} disabled={items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Exportar</button></div>
                 </div>
               </div>
             </section>
@@ -3305,7 +3313,7 @@ export default function ResellerPriceListModal({
                   <button type="button" onClick={() => { setCategoryFilter('all'); setPriceMinFilter(''); setPriceMaxFilter(''); setProfitMinFilter(''); setProfitMaxFilter(''); setMarginMinFilter(''); setMarginMaxFilter(''); setAvailabilityFilter('all'); setWithoutPhotoFilter(false); setUncategorizedFilter(false); setPriceListInclusionFilter('all'); setProductListSourceFilter('all'); setAdvisorFilter('all'); setMarginFilter('all'); setSearch(''); setPriceProductPage(0); }} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold">Limpiar filtros</button>
                 </div>
               </div>}
-              {pdfExportOpen && <section aria-label="Opciones de exportación" className="grid gap-3 rounded-xl border border-[var(--accent)] bg-[var(--surface-1)] p-4 md:grid-cols-[1.2fr_1fr_auto] md:items-end">
+              {pdfExportOpen && <section id="reseller-pdf-export-options" aria-label="Opciones de exportación" className="grid gap-3 rounded-xl border border-[var(--accent)] bg-[var(--surface-1)] p-4 md:grid-cols-[1.2fr_1fr_auto] md:items-end">
                 <label className="text-xs font-semibold text-[var(--ink-muted)]">Qué productos incluir<select value={pdfExportScope} onChange={event => setPdfExportScope(event.target.value as typeof pdfExportScope)} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 text-sm text-[var(--ink)]">
                   <option value="full">Lista completa · {items.length} productos</option>
                   <option value="filtered">Resultados filtrados · {exportableFilteredCount} en la lista</option>
