@@ -179,58 +179,151 @@ export async function createStockInventoryWorkbook(
   const XLSX = await import('xlsx');
   const workbook = XLSX.utils.book_new();
   const generated = new Date();
-  const costValue = rows.reduce((sum, row) => sum + (row.purchaseCost ?? 0) * row.stock, 0);
+  const excelCurrency = '"' + currencySymbol.replace(/"/g, '""') + '" #,##0;[Red]-"' + currencySymbol.replace(/"/g, '""') + '" #,##0';
+  const totalUnits = rows.reduce((sum, row) => sum + row.stock, 0);
+  const productCount = new Set(rows.map((row) => row.product.id)).size;
+  const costedRows = rows.filter((row) => row.purchaseCost !== null && Number.isFinite(row.purchaseCost));
+  const costedUnits = costedRows.reduce((sum, row) => sum + row.stock, 0);
+  const missingCostUnits = totalUnits - costedUnits;
+  const investment = costedRows.reduce((sum, row) => sum + (row.purchaseCost ?? 0) * row.stock, 0);
   const saleValue = rows.reduce((sum, row) => sum + row.product.salePrice * row.stock, 0);
+  const costedSaleValue = costedRows.reduce((sum, row) => sum + row.product.salePrice * row.stock, 0);
+  const grossProfit = costedSaleValue - investment;
+  const grossMargin = costedSaleValue > 0 ? grossProfit / costedSaleValue : 0;
+  const costCoverage = totalUnits > 0 ? costedUnits / totalUnits : 0;
+  const holders = [...new Set(rows.map((row) => row.ownerName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es-AR'));
+  const holdersLabel = holders.length > 0 ? holders.join(', ') : 'Sin titular asignado';
+  const business = businessName || 'RivaStock';
+
   const summary = [
-    ['Inventario · ' + (businessName || 'RivaStock')],
-    ['Generado', generated],
-    ['Filtros aplicados', filtersLabel],
-    ['Productos / titular', rows.length],
-    ['Unidades disponibles', rows.reduce((sum, row) => sum + row.stock, 0)],
-    ['Inversión estimada', costValue],
-    ['Valor potencial a precio de venta', saleValue],
-    ['Moneda', currencySymbol],
+    [business, '', '', ''],
+    ['Generado el', generated, '', ''],
+    ['', '', '', ''],
+    ['RESUMEN DEL INVENTARIO', '', '', ''],
+    ['Productos únicos', productCount, 'Filas por titular', rows.length],
+    ['Unidades disponibles', totalUnits, 'Inversión estimada', investment],
+    ['Valor potencial a precio de venta', saleValue, 'Ganancia bruta potencial estimada', grossProfit],
+    ['Unidades con costo registrado', costedUnits, 'Unidades sin costo registrado', missingCostUnits],
+    ['Margen bruto potencial', grossMargin, 'Cobertura de costo', costCoverage],
+    ['', '', '', ''],
+    ['ALCANCE Y CRITERIOS', '', '', ''],
+    ['Filtros aplicados', filtersLabel, '', ''],
+    ['Titulares incluidos', holdersLabel, '', ''],
+    ['Cálculo de ganancia', 'Venta potencial de las unidades con costo registrado menos la inversión estimada de esas mismas unidades.', '', ''],
+    ['Lectura del resultado', 'Es una estimación bruta del stock actual si se vendiera al precio registrado. Las unidades sin costo se excluyen de la ganancia.', '', ''],
+    ['No es ganancia neta', 'No descuenta gastos, impuestos, comisiones, envíos ni otros costos operativos.', '', ''],
   ];
   const summarySheet = XLSX.utils.aoa_to_sheet(summary);
-  summarySheet['!cols'] = [{ wch: 36 }, { wch: 24 }];
+  summarySheet['!cols'] = [{ wch: 34 }, { wch: 23 }, { wch: 34 }, { wch: 23 }];
+  summarySheet['!rows'] = [
+    { hpt: 30 },
+    { hpt: 22 },
+    { hpt: 9 },
+    { hpt: 24 },
+    { hpt: 24 },
+    { hpt: 24 },
+    { hpt: 30 },
+    { hpt: 24 },
+    { hpt: 24 },
+    { hpt: 9 },
+    { hpt: 24 },
+    { hpt: 30 },
+    { hpt: 30 },
+    { hpt: 38 },
+    { hpt: 38 },
+    { hpt: 30 },
+  ];
+  summarySheet['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+    { s: { r: 1, c: 1 }, e: { r: 1, c: 3 } },
+    { s: { r: 3, c: 0 }, e: { r: 3, c: 3 } },
+    { s: { r: 10, c: 0 }, e: { r: 10, c: 3 } },
+    { s: { r: 11, c: 1 }, e: { r: 11, c: 3 } },
+    { s: { r: 12, c: 1 }, e: { r: 12, c: 3 } },
+    { s: { r: 13, c: 1 }, e: { r: 13, c: 3 } },
+    { s: { r: 14, c: 1 }, e: { r: 14, c: 3 } },
+    { s: { r: 15, c: 1 }, e: { r: 15, c: 3 } },
+  ];
   if (summarySheet['B2']) summarySheet['B2'].z = 'dd/mm/yyyy hh:mm';
-  for (const cell of ['B5', 'B6']) if (summarySheet[cell]) summarySheet[cell].z = '"$"#,##0;[Red]-"$"#,##0';
+  for (const cell of ['B5', 'D5', 'B6', 'B8', 'D8']) {
+    if (summarySheet[cell]) summarySheet[cell].z = '#,##0';
+  }
+  for (const cell of ['D6', 'B7', 'D7']) {
+    if (summarySheet[cell]) summarySheet[cell].z = excelCurrency;
+  }
+  for (const cell of ['B9', 'D9']) {
+    if (summarySheet[cell]) summarySheet[cell].z = '0.0%';
+  }
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen');
 
   const inventory = [
-    ['Código', 'Titular', 'Categoría', 'Producto', 'Costo unitario', 'Precio de venta', 'Margen', 'Unidades', 'Disponibilidad', 'Visible en catálogo'],
+    [business, '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Generado el', generated, '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Filtros aplicados: ' + filtersLabel, '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Código', 'Titular', 'Categoría', 'Producto', 'Costo unitario', 'Precio de venta', 'Ganancia unitaria', 'Margen bruto', 'Unidades', 'Inversión total', 'Venta potencial', 'Ganancia bruta potencial', 'Disponibilidad', 'Visible en catálogo'],
     ...rows.map((row) => {
       const fields = row.product.customFields ?? {};
       const codeField = Object.entries(fields).find(([key, value]) => /sku|c[oó]digo|code/i.test(key) && value !== null && value !== undefined && String(value).trim());
       const code = row.product.barcode || (codeField ? String(codeField[1]) : '');
       const onOrder = isOnOrder(row.product);
+      const hasCost = row.purchaseCost !== null && Number.isFinite(row.purchaseCost);
+      const unitCost = hasCost ? row.purchaseCost as number : null;
+      const unitProfit = unitCost === null ? '' : row.product.salePrice - unitCost;
+      const margin = unitCost === null || row.product.salePrice <= 0 ? '' : (row.product.salePrice - unitCost) / row.product.salePrice;
       return [
         code,
         row.ownerName,
         row.product.category || 'Sin categoría',
         row.product.name,
-        row.purchaseCost ?? '',
+        unitCost ?? '',
         row.product.salePrice,
-        row.marginPercent === null ? '' : row.marginPercent / 100,
+        unitProfit,
+        margin,
         row.stock,
+        unitCost === null ? '' : unitCost * row.stock,
+        row.product.salePrice * row.stock,
+        unitCost === null ? '' : (row.product.salePrice - unitCost) * row.stock,
         row.stock > 0 ? 'Disponible' : onOrder ? 'Bajo pedido' : 'Agotado',
         row.product.showInCatalog ? 'Sí' : 'No',
       ];
     }),
   ];
   const inventorySheet = XLSX.utils.aoa_to_sheet(inventory);
-  inventorySheet['!cols'] = [{ wch: 18 }, { wch: 20 }, { wch: 24 }, { wch: 42 }, { wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 20 }];
-  if (rows.length > 0) {
-    inventorySheet['!autofilter'] = { ref: 'A1:J' + (rows.length + 1) };
-    inventorySheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
-    for (let rowIndex = 1; rowIndex <= rows.length; rowIndex += 1) {
-      for (const column of ['E', 'F']) {
-        const cell = inventorySheet[column + (rowIndex + 1)];
-        if (cell) cell.z = '"$"#,##0;[Red]-"$"#,##0';
-      }
-      const marginCell = inventorySheet['G' + (rowIndex + 1)];
-      if (marginCell) marginCell.z = '0.0%';
+  inventorySheet['!cols'] = [
+    { wch: 18 },
+    { wch: 20 },
+    { wch: 24 },
+    { wch: 42 },
+    { wch: 17 },
+    { wch: 17 },
+    { wch: 19 },
+    { wch: 15 },
+    { wch: 12 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 23 },
+    { wch: 18 },
+    { wch: 20 },
+  ];
+  inventorySheet['!rows'] = [{ hpt: 30 }, { hpt: 22 }, { hpt: 24 }, { hpt: 30 }];
+  inventorySheet['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
+    { s: { r: 1, c: 1 }, e: { r: 1, c: 13 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 13 } },
+  ];
+  const lastRow = rows.length + 4;
+  inventorySheet['!autofilter'] = { ref: 'A4:N' + lastRow };
+  inventorySheet['!freeze'] = { xSplit: 0, ySplit: 4, topLeftCell: 'A5', activePane: 'bottomLeft', state: 'frozen' };
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const excelRow = rowIndex + 5;
+    for (const column of ['E', 'F', 'G', 'J', 'K', 'L']) {
+      const cell = inventorySheet[column + excelRow];
+      if (cell) cell.z = excelCurrency;
     }
+    const marginCell = inventorySheet['H' + excelRow];
+    if (marginCell) marginCell.z = '0.0%';
+    const unitsCell = inventorySheet['I' + excelRow];
+    if (unitsCell) unitsCell.z = '#,##0';
   }
   XLSX.utils.book_append_sheet(workbook, inventorySheet, 'Inventario');
 
