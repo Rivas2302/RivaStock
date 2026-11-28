@@ -38,6 +38,19 @@ function photoDownloadWarning(failedCount: number): string {
   return `No pudimos incluir ${failedCount} foto${failedCount === 1 ? '' : 's'}.`;
 }
 
+function isProductOnOrder(product: Product, listAvailability?: PriceListItem['availability']): boolean {
+  if (listAvailability !== undefined) return listAvailability === 'on_order';
+  const fields = product.customFields ?? {};
+  const value = String(fields.availability ?? fields.availabilityStatus ?? fields.disponibilidad ?? '').toLowerCase();
+  return fields.onOrder === true || value.includes('pedido') || value.includes('order') || value === 'on_order';
+}
+
+function filePhotoIndex(file: File): number | null {
+  const match = file.name.match(/-(\d+)\.(?:webp|jpg)$/i);
+  return match ? Number(match[1]) - 1 : null;
+}
+
+
 type ProductPhotoIconName = 'arrow-left' | 'check' | 'chevron-left' | 'chevron-right' | 'copy' | 'heart' | 'image-off' | 'loader' | 'search' | 'scan' | 'share' | 'shopping-bag' | 'star' | 'x';
 
 function ProductPhotoIcon({
@@ -141,6 +154,10 @@ export default function ProductPhotos() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewPhotoIndexes, setReviewPhotoIndexes] = useState<Record<string, number[]>>({});
+  const [reviewText, setReviewText] = useState('');
+  const [reviewTextEdited, setReviewTextEdited] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const photoTouchStartX = useRef<number | null>(null);
@@ -266,18 +283,15 @@ export default function ProductPhotos() {
   [visibleProducts]);
 
   const filteredProducts = useMemo(() => {
-    const searched = debouncedSearch
-      ? searchProducts(visibleProducts, debouncedSearch)
-      : visibleProducts;
+    const searched = debouncedSearch ? searchProducts(visibleProducts, debouncedSearch) : visibleProducts;
+    const exactBarcodeProduct = debouncedSearch.trim() ? findProductByBarcode(visibleProducts, debouncedSearch) : null;
     const min = minimumPrice.trim() ? Number(minimumPrice) : null;
     const max = maximumPrice.trim() ? Number(maximumPrice) : null;
     return searched.filter((product) => {
       const category = product.category?.trim() || 'Sin categoría';
       if (categoryFilter !== 'all' && category !== categoryFilter) return false;
-      const stock = holdingsEnabled
-        ? getVisibleProductStock(product.id, visibleHoldings)
-        : product.stock;
-      if (onlyWithStock && stock <= 0) return false;
+      const stock = holdingsEnabled ? getVisibleProductStock(product.id, visibleHoldings) : product.stock;
+      if (onlyWithStock && stock <= 0 && product.id !== exactBarcodeProduct?.id) return false;
       if (collectionFilter === 'favorite' && !favoriteIds.includes(product.id)) return false;
       if (collectionFilter === 'recent' && !recentIds.includes(product.id)) return false;
       const price = getPrice(product);
@@ -285,21 +299,18 @@ export default function ProductPhotos() {
       if (min !== null && price !== null && price < min) return false;
       if (max !== null && price !== null && price > max) return false;
       return true;
+    }).sort((left, right) => {
+      if (exactBarcodeProduct?.id === left.id) return -1;
+      if (exactBarcodeProduct?.id === right.id) return 1;
+      const rank = (product: Product) => {
+        const stock = holdingsEnabled ? getVisibleProductStock(product.id, visibleHoldings) : product.stock;
+        if (stock > 0) return 0;
+        const availability = priceChoice === 'public' ? undefined : priceItemsByListAndProduct.get(priceChoice + ':' + product.id)?.availability;
+        return isProductOnOrder(product, availability) ? 1 : 2;
+      };
+      return rank(left) - rank(right);
     });
-  }, [
-    categoryFilter,
-    collectionFilter,
-    debouncedSearch,
-    favoriteIds,
-    holdingsEnabled,
-    maximumPrice,
-    minimumPrice,
-    onlyWithStock,
-    recentIds,
-    visibleHoldings,
-    visibleProducts,
-    getPrice,
-  ]);
+  }, [categoryFilter, collectionFilter, debouncedSearch, favoriteIds, holdingsEnabled, maximumPrice, minimumPrice, onlyWithStock, priceChoice, priceItemsByListAndProduct, recentIds, visibleHoldings, visibleProducts, getPrice]);
 
   const clearFilters = () => {
     setSearch('');
@@ -413,10 +424,6 @@ export default function ProductPhotos() {
       return;
     }
     const photoCount = getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length;
-    if (photoCount === 0) {
-      showToast('Este producto todavía no tiene fotos para enviar.', 'info');
-      return;
-    }
     if (selectedIds.length >= MAX_SELECTED_PRODUCTS) {
       showToast('Podés seleccionar hasta 10 productos.', 'info');
       return;
@@ -426,11 +433,11 @@ export default function ProductPhotos() {
       return;
     }
     setSelectedIds((current) => [...current, product.id]);
-    void prepareProductFiles(product).catch(() => undefined);
+    if (photoCount > 0) void prepareProductFiles(product).catch(() => undefined);
   };
 
   const catalogUrlFor = (product: Product): string | null => (
-    product.showInCatalog && user?.catalogSlug
+    priceChoice === 'public' && product.showInCatalog && user?.catalogSlug
       ? getCatalogShareUrl(window.location.origin, user.catalogSlug, product.id)
       : null
   );
@@ -451,80 +458,121 @@ export default function ProductPhotos() {
     return createProductPhotoShareText(entries);
   };
 
-  const shareProducts = async (items: Product[]) => {
-    const validItems = items.filter((product) => getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length > 0);
-    if (validItems.length === 0) {
-      showToast('No hay fotos de producto para compartir.', 'info');
+  const priceChannelLabel = priceChoice === 'public'
+    ? 'Al público · catálogo minorista'
+    : 'Revendedores · ' + (priceLists.find((list) => list.id === priceChoice)?.name ?? 'lista elegida');
+
+  const openReview = (items: Product[] = selectedProducts) => {
+    if (!items.length) return;
+    const text = createTextFor(items);
+    if (text === null) return;
+    setSelectedIds(items.map((product) => product.id));
+    setReviewPhotoIndexes(Object.fromEntries(items.map((product) => [
+      product.id,
+      getProductPhotoUrlsForSharing(product, supabaseProjectUrl).map((_, index) => index),
+    ])));
+    setReviewText(text);
+    setReviewTextEdited(false);
+    setReviewOpen(true);
+  };
+
+  const removeReviewProduct = (productId: string) => {
+    const nextProducts = selectedProducts.filter((product) => product.id !== productId);
+    setSelectedIds(nextProducts.map((product) => product.id));
+    setReviewPhotoIndexes((current) => {
+      const next = { ...current };
+      delete next[productId];
+      return next;
+    });
+    if (!reviewTextEdited) setReviewText(createTextFor(nextProducts) ?? '');
+    if (!nextProducts.length) setReviewOpen(false);
+  };
+
+  const setOnlyCoverPhotos = () => {
+    setReviewPhotoIndexes(Object.fromEntries(selectedProducts.map((product) => {
+      const urls = getProductPhotoUrlsForSharing(product, supabaseProjectUrl);
+      return [product.id, urls.length ? [0] : []];
+    })));
+  };
+
+  const copyReviewMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(reviewText);
+      showToast('Mensaje copiado al portapapeles.', 'success');
+    } catch {
+      showToast('No se pudo acceder al portapapeles de este navegador.', 'error');
+    }
+  };
+
+  const sendReview = async () => {
+    const text = reviewText.trim();
+    if (!text) {
+      showToast('Escribí un mensaje antes de compartir.', 'info');
       return;
     }
-    const text = createTextFor(validItems);
-    if (!text) return;
-    const imageCount = validItems.reduce((total, product) => (
-      total + getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length
-    ), 0);
-    if (imageCount > MAX_SELECTED_PHOTOS) {
+    const photosByProduct = selectedProducts.map((product) => ({
+      product,
+      indexes: reviewPhotoIndexes[product.id] ?? [],
+    })).filter(({ product, indexes }) => getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length > 0 && indexes.length > 0);
+    const photoCount = photosByProduct.reduce((total, entry) => total + entry.indexes.length, 0);
+    if (!photoCount) {
+      window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (photoCount > MAX_SELECTED_PHOTOS) {
       showToast('La selección puede incluir hasta 10 fotos en total.', 'error');
       return;
     }
     setFallbackFiles([]);
     setFallbackText('');
-
     try {
-      const missingFiles = validItems.filter((product) => (
-        !preparedFilesRef.current.has(`${ownerUid ?? 'anonymous'}:${product.id}`)
-      ));
-      if (missingFiles.length > 0) {
-        const outcomes = await Promise.allSettled(missingFiles.map(prepareProductFiles));
-        const failedCount = outcomes.reduce((total, outcome) => (
-          total + (outcome.status === 'fulfilled' ? outcome.value.failedCount : 1)
-        ), 0);
-        const readyMessage = 'Las fotos disponibles están listas. Tocá Enviar otra vez para abrir el menú.';
-        showToast(failedCount > 0 ? `${photoDownloadWarning(failedCount)} ${readyMessage}` : readyMessage,
-          failedCount > 0 ? 'error' : 'info');
+      const missingFiles = photosByProduct.filter(({ product }) => !preparedFilesRef.current.has((ownerUid ?? 'anonymous') + ':' + product.id));
+      if (missingFiles.length) {
+        const outcomes = await Promise.allSettled(missingFiles.map(({ product }) => prepareProductFiles(product)));
+        const failedCount = outcomes.reduce((total, outcome, index) => {
+          const chosenIndexes = missingFiles[index].indexes;
+          if (outcome.status === 'rejected') return total + chosenIndexes.length;
+          const successful = outcome.value.files.filter((file) => {
+            const imageIndex = filePhotoIndex(file);
+            return imageIndex !== null && chosenIndexes.includes(imageIndex);
+          }).length;
+          return total + chosenIndexes.length - successful;
+        }, 0);
+        const readyMessage = 'Las fotos elegidas están listas. Tocá “Compartir fotos y mensaje” para abrir el menú de WhatsApp.';
+        showToast(failedCount ? photoDownloadWarning(failedCount) + ' ' + readyMessage : readyMessage, failedCount ? 'error' : 'info');
         return;
       }
-      const prepared = validItems.map((product) => preparedFilesRef.current.get(`${ownerUid ?? 'anonymous'}:${product.id}`))
-        .filter((result): result is ProductPhotoFilesResult => result !== undefined);
-      const files = prepared.flatMap((result) => result.files);
-      const failedCount = prepared.reduce((total, result) => total + result.failedCount, 0);
-      const warning = failedCount > 0 ? `${photoDownloadWarning(failedCount)} ` : '';
-      if (files.length === 0) {
-        setSelectedProductId(null);
-        setFallbackFiles([]);
+      const files: File[] = [];
+      let failedCount = 0;
+      for (const { product, indexes } of photosByProduct) {
+        const prepared = preparedFilesRef.current.get((ownerUid ?? 'anonymous') + ':' + product.id);
+        const matching = prepared?.files.filter((file) => {
+          const imageIndex = filePhotoIndex(file);
+          return imageIndex !== null && indexes.includes(imageIndex);
+        }) ?? [];
+        files.push(...matching);
+        failedCount += indexes.length - matching.length;
+      }
+      const warning = failedCount ? photoDownloadWarning(failedCount) + ' ' : '';
+      if (!files.length) {
         setFallbackText(text);
-        showToast(`${warning || PHOTO_DOWNLOAD_ERROR} El texto queda listo para copiar.`, 'error');
+        showToast((warning || PHOTO_DOWNLOAD_ERROR) + ' Podés copiar el mensaje y enviarlo por WhatsApp.', 'error');
         return;
       }
-      const result = await copyThenShareProductPhotos(
-        text,
-        files,
-        navigator as FileShareNavigator,
-        navigator.clipboard,
-        () => showToast('Texto copiado: pegalo como pie de foto si no aparece', 'success'),
-      );
-      if (result === 'unsupported') {
-        setSelectedProductId(null);
-        setFallbackFiles(files);
-        setFallbackText(text);
-        showToast(`${warning}Este navegador no permite compartir archivos. Podés guardar las fotos y copiar el texto.`, 'info');
+      const result = await copyThenShareProductPhotos(text, files, navigator as FileShareNavigator, navigator.clipboard,
+        () => showToast('Mensaje copiado: pegalo en WhatsApp si no aparece', 'success'));
+      if (result === 'shared') {
+        setReviewOpen(false);
+        if (failedCount) showToast(photoDownloadWarning(failedCount), 'error');
+      } else if (result === 'unsupported') {
+        setFallbackFiles(files); setFallbackText(text);
+        showToast(warning + 'Este navegador no permite compartir archivos. Podés guardar las fotos elegidas y copiar el mensaje.', 'info');
       } else if (result === 'clipboard-failed') {
-        setSelectedProductId(null);
-        setFallbackFiles(files);
-        setFallbackText(text);
-        showToast(`${warning}No se pudo copiar el texto. Podés guardarlo y copiarlo manualmente.`, 'error');
+        setFallbackFiles(files); setFallbackText(text);
+        showToast(warning + 'No se pudo copiar el mensaje. Podés guardar las fotos y copiarlo manualmente.', 'error');
       } else if (result === 'failed') {
-        setSelectedProductId(null);
-        setFallbackFiles(files);
-        setFallbackText(text);
-        showToast(`${warning}No se pudo abrir el menú para compartir. Podés guardar las fotos y copiar el texto.`, 'error');
-      } else if (result === 'shared' && failedCount > 0) {
-        showToast(photoDownloadWarning(failedCount), 'error');
-        validItems.forEach((product, index) => {
-          if (prepared[index]?.failedCount > 0) {
-            preparedFilesRef.current.delete(`${ownerUid ?? 'anonymous'}:${product.id}`);
-            setPreparedPhotoIds((current) => current.filter((id) => id !== product.id));
-          }
-        });
+        setFallbackFiles(files); setFallbackText(text);
+        showToast(warning + 'No se pudo abrir el menú para compartir. Podés guardar las fotos y copiar el mensaje.', 'error');
       }
     } catch {
       showToast(PHOTO_DOWNLOAD_ERROR, 'error');
@@ -642,17 +690,21 @@ export default function ProductPhotos() {
                 </select>
               </label>
               <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                Precio del texto
+                Lista de precios
                 <select
-                  aria-label="Precio del texto"
+                  aria-label="Lista de precios"
                   value={priceChoice}
                   onChange={(event) => choosePrice(event.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 >
-                  <option value="public">Precio al público</option>
-                  {priceLists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
+                  <option value="public">Público · precio minorista</option>
+                  {priceLists.map((list) => <option key={list.id} value={list.id}>Revendedores · {list.name}</option>)}
                 </select>
               </label>
+              <p className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2 xl:col-span-4">
+                Canal del envío: <span className="font-semibold">{priceChannelLabel}</span>
+                {priceChoice !== 'public' && ' · Esta lista no tiene enlace público de producto; se compartirán el precio y las fotos.'}
+              </p>
               <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
                 Rango de precio
                 <div className="mt-1 flex gap-2">
@@ -740,6 +792,10 @@ export default function ProductPhotos() {
                     : product.stock;
                   const isSelected = selectedIds.includes(product.id);
                   const isFavorite = favoriteIds.includes(product.id);
+                  const availability = priceChoice === 'public' ? undefined : priceItemsByListAndProduct.get(priceChoice + ':' + product.id)?.availability;
+                  const availabilityLabel = stock > 0
+                    ? 'Disponible · ' + stock
+                    : isProductOnOrder(product, availability) ? 'Bajo pedido' : 'Agotado';
                   return (
                     <article key={product.id} className={`overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-slate-900 ${isSelected ? 'border-[#365fad] ring-2 ring-[#365fad]/30' : 'border-slate-200 dark:border-slate-700'}`}>
                       <button
@@ -763,7 +819,7 @@ export default function ProductPhotos() {
                               <span className="text-xs">Sin foto</span>
                             </div>
                           )}
-                          <span className="absolute bottom-2 left-2 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-white">Stock {stock}</span>
+                          <span className="absolute bottom-2 left-2 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-white">{availabilityLabel}</span>
                         </div>
                         <div className="space-y-1 p-3">
                           <h3 className="line-clamp-2 min-h-10 font-semibold text-slate-900 dark:text-white">{product.name}</h3>
@@ -785,7 +841,6 @@ export default function ProductPhotos() {
                           type="button"
                           onClick={() => toggleSelection(product)}
                           aria-pressed={isSelected}
-                          disabled={!photo}
                           className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-semibold text-[#365fad] disabled:text-slate-300 dark:text-[#90a9df]"
                         >
                           {isSelected ? <ProductPhotoIcon name="check" size={16}  /> : <ProductPhotoIcon name="share" size={16}  />}
@@ -809,11 +864,84 @@ export default function ProductPhotos() {
           </div>
           <div className="flex shrink-0 gap-2">
             <button type="button" onClick={() => setSelectedIds([])} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300">Cancelar</button>
-            <button type="button" onClick={() => void shareProducts(selectedProducts)} disabled={selectedIds.some((id) => preparingPhotoIds.includes(id) || (!preparedPhotoIds.includes(id) && !preparationErrors[id]))} className="flex items-center gap-2 rounded-xl bg-[#365fad] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">
-              <ProductPhotoIcon name="share" size={17}  /> Enviar
+            <button type="button" onClick={() => openReview()} className="flex items-center gap-2 rounded-xl bg-[#365fad] px-4 py-2.5 text-sm font-bold text-white">
+              <ProductPhotoIcon name="share" size={17} /> Revisar envío
             </button>
           </div>
         </aside>
+      )}
+
+      {reviewOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 p-0 sm:items-center sm:p-4">
+          <section role="dialog" aria-modal="true" aria-label="Revisar envío" className="flex max-h-[96dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900 sm:rounded-3xl">
+            <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 dark:border-slate-800 sm:px-6">
+              <div><h3 className="text-xl font-bold text-slate-900 dark:text-white">Revisar envío</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{priceChannelLabel}</p></div>
+              <button type="button" aria-label="Cerrar revisión" onClick={() => setReviewOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><ProductPhotoIcon name="x" size={22} /></button>
+            </header>
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{selectedProducts.length} {selectedProducts.length === 1 ? 'producto' : 'productos'} · {selectedProducts.reduce((count, product) => count + (reviewPhotoIndexes[product.id]?.length ?? 0), 0)} fotos</p>
+                <button type="button" onClick={setOnlyCoverPhotos} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">Solo portada</button>
+              </div>
+              <div className="space-y-3">
+                {selectedProducts.map((product) => {
+                  const urls = getProductPhotoUrlsForSharing(product, supabaseProjectUrl);
+                  const indexes = reviewPhotoIndexes[product.id] ?? [];
+                  const availability = priceChoice === 'public' ? undefined : priceItemsByListAndProduct.get(priceChoice + ':' + product.id)?.availability;
+                  const stock = holdingsEnabled ? getVisibleProductStock(product.id, visibleHoldings) : product.stock;
+                  const status = stock > 0 ? 'Disponible · ' + stock : isProductOnOrder(product, availability) ? 'Bajo pedido' : 'Agotado';
+                  const catalogUrl = catalogUrlFor(product);
+                  return (
+                    <article key={product.id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                      <div className="flex items-start gap-3">
+                        {urls[0] && <img src={urls[0]} alt="" className="h-14 w-14 shrink-0 rounded-lg bg-slate-100 object-cover dark:bg-slate-800" />}
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-semibold text-slate-900 dark:text-white">{product.name}</h4>
+                          <p className="mt-1 text-sm font-bold text-[#365fad] dark:text-[#90a9df]">{productPriceLabel(product)}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{status}</p>
+                          {priceChoice === 'public'
+                            ? catalogUrl
+                              ? <p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">Ficha: {catalogUrl}</p>
+                              : <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Sin ficha pública; se enviarán el precio y las fotos.</p>
+                            : <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Sin enlace público para esta lista; se enviarán el precio y las fotos.</p>}
+                        </div>
+                        <button type="button" onClick={() => removeReviewProduct(product.id)} aria-label={'Quitar ' + product.name + ' del envío'} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-800"><ProductPhotoIcon name="x" size={18} /></button>
+                      </div>
+                      {urls.length > 0 ? (
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {urls.map((url, index) => {
+                            const checked = indexes.includes(index);
+                            return (
+                              <label key={product.id + '-' + index} className={'flex cursor-pointer items-center gap-2 rounded-lg border p-2 text-xs ' + (checked ? 'border-[#365fad] bg-blue-50 dark:bg-blue-950/30' : 'border-slate-200 dark:border-slate-700')}>
+                                <input type="checkbox" checked={checked} onChange={() => setReviewPhotoIndexes((current) => ({
+                                  ...current,
+                                  [product.id]: checked ? indexes.filter((item) => item !== index) : [...indexes, index],
+                                }))} className="shrink-0 accent-[#365fad]" aria-label={'Incluir foto ' + (index + 1) + ' de ' + product.name} />
+                                <img src={url} alt="" className="h-12 w-12 shrink-0 rounded-md object-cover" />
+                                <span>{index === 0 ? 'Portada' : 'Foto ' + (index + 1)}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">Este producto no tiene fotos. Podés copiar el mensaje y mandarlo por WhatsApp.</p>}
+                    </article>
+                  );
+                })}
+              </div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Mensaje para WhatsApp
+                <textarea value={reviewText} onChange={(event) => { setReviewText(event.target.value); setReviewTextEdited(true); }} rows={5} className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm font-normal text-slate-900 outline-none focus:border-[#365fad] focus:ring-2 focus:ring-[#365fad]/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+              </label>
+            </div>
+            <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 p-4 dark:border-slate-800 sm:flex-row sm:justify-end sm:px-6">
+              <button type="button" onClick={() => void copyReviewMessage()} disabled={!reviewText.trim()} className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"><ProductPhotoIcon name="copy" size={18} /> Copiar mensaje</button>
+              <button type="button" onClick={() => void sendReview()} disabled={!reviewText.trim() || selectedProducts.some((product) => preparingPhotoIds.includes(product.id) && (reviewPhotoIndexes[product.id]?.length ?? 0) > 0)} className="flex items-center justify-center gap-2 rounded-xl bg-[#365fad] px-4 py-3 font-bold text-white disabled:opacity-50">
+                <ProductPhotoIcon name="share" size={18} />
+                {selectedProducts.some((product) => (reviewPhotoIndexes[product.id]?.length ?? 0) > 0) ? 'Compartir fotos y mensaje' : 'Abrir WhatsApp con mensaje'}
+              </button>
+            </footer>
+          </section>
+        </div>
       )}
 
       {fallbackFiles.length > 0 && (
@@ -888,13 +1016,13 @@ export default function ProductPhotos() {
               <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => void shareProducts([selectedProduct])}
-                  disabled={selectedPhotos.length === 0 || getPrice(selectedProduct) === null || preparingPhotoIds.includes(selectedProduct.id) || (!preparedPhotoIds.includes(selectedProduct.id) && !preparationErrors[selectedProduct.id])}
+                  onClick={() => openReview([selectedProduct])}
+                  disabled={getPrice(selectedProduct) === null}
                   className="flex items-center justify-center gap-2 rounded-xl bg-[#365fad] px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <ProductPhotoIcon name="share" size={18}  /> {preparingPhotoIds.includes(selectedProduct.id) ? 'Preparando fotos…' : preparedPhotoIds.includes(selectedProduct.id) ? 'Enviar' : 'Reintentar fotos'}
+                  <ProductPhotoIcon name="share" size={18} /> Revisar envío
                 </button>
-                <button type="button" onClick={() => toggleSelection(selectedProduct)} disabled={selectedPhotos.length === 0} className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200">
+                <button type="button" onClick={() => toggleSelection(selectedProduct)} className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200">
                   {selectedIds.includes(selectedProduct.id) ? <ProductPhotoIcon name="check" size={18}  /> : <ProductPhotoIcon name="share" size={18}  />}
                   {selectedIds.includes(selectedProduct.id) ? 'Quitar selección' : 'Agregar a selección'}
                 </button>
@@ -906,7 +1034,7 @@ export default function ProductPhotos() {
               </div>
               {preparationErrors[selectedProduct.id] && <p role="alert" className="mt-3 text-sm text-rose-600">{preparationErrors[selectedProduct.id]} Al tocar Enviar se vuelve a intentar.</p>}
               {preparationWarnings[selectedProduct.id] && <p role="status" className="mt-3 text-sm text-amber-700 dark:text-amber-300">{preparationWarnings[selectedProduct.id]}</p>}
-              {selectedPhotos.length > 1 && <p className="mt-3 text-center text-xs text-slate-500">Deslizá las fotos con las flechas; se envían todas juntas.</p>}
+              {selectedPhotos.length > 1 && <p className="mt-3 text-center text-xs text-slate-500">Deslizá las fotos con las flechas; elegí cuáles enviar en la revisión.</p>}
             </div>
           </section>
         </div>
