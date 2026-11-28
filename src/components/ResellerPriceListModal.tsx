@@ -2221,16 +2221,26 @@ export default function ResellerPriceListModal({
           const sourceCategory = entry.row.category.trim();
           const sourceName = entry.row.name.trim();
           const previousSourceName = String(existing?.customFields?.supplierImportSourceName ?? '').trim();
-          const preserveCustomName = Boolean(existing && previousSourceName
-            && existing.name.trim().toLocaleLowerCase('es-AR') !== previousSourceName.toLocaleLowerCase('es-AR'));
-          const resolvedCategory = resolveSupplierImportCategory(sourceCategory, entry.row.targetCategoryId, categories);
+          const preserveCustomName = Boolean(existing && (
+            existing.customFields?.supplierImportCustomName === true
+            || !previousSourceName
+            || existing.name.trim().toLocaleLowerCase('es-AR') !== previousSourceName.toLocaleLowerCase('es-AR')
+          ));
+          const previousImportCategoryId = String(existing?.customFields?.supplierImportCategoryId ?? '').trim();
+          const preserveCustomCategory = Boolean(existing && previousImportCategoryId && existing.categoryId !== previousImportCategoryId);
+          const resolvedCategory = preserveCustomCategory
+            ? { categoryId: existing!.categoryId, category: existing!.category }
+            : resolveSupplierImportCategory(sourceCategory, entry.row.targetCategoryId, categories);
           const now = new Date().toISOString();
           const photoBrandFields = supplierPhotoReviewFields(entry.row.photoBrandReview, Boolean(supplierImportPhotoFiles[entry.row.sourceRow]));
           const customFields = { ...(existing?.customFields ?? {}), ...(photoBrandFields ?? {}) };
           Object.assign(customFields, clearSupplierProductNoPriceStatus(customFields, editingSupplierId));
           customFields.supplierImportSupplierId = editingSupplierId;
           customFields.supplierImportSourceName = sourceName;
+          customFields.supplierImportCategoryId = resolvedCategory.categoryId;
           customFields.supplierImportSourceCategory = sourceCategory;
+          if (preserveCustomName) customFields.supplierImportCustomName = true;
+          if (preserveCustomCategory) customFields.supplierImportCustomCategory = true;
           if (supplierRivaCatalogSource) customFields.rivaCatalogSupplierImport = true;
           else delete customFields.rivaCatalogSupplierImport;
           if (entry.row.brand) customFields.supplierBrand = entry.row.brand.slice(0, 100);
@@ -3395,7 +3405,7 @@ export default function ResellerPriceListModal({
                           <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink-muted)]">{formatCurrency(product.salePrice)}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-[var(--ink)]">{formatCurrency(resellerPrice)}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink)]">{profit === null ? '—' : formatCurrency(profit)}</td>
-                          <td className="px-3 py-3"><div className="space-y-1"><span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold', item ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{item ? 'En la lista' : 'Fuera de la lista'}</span><p className="text-xs text-[var(--ink-muted)]">{item?.availability === 'on_order' ? 'Por pedido' : item ? 'Disponible' : statusLabel}</p>{item && marginSuggestion?.low && <p className="max-w-52 text-xs text-[var(--ink-muted)]">Sugerido: {formatCurrency(marginSuggestion.suggestedResellerPrice)} (ganás {formatCurrency(marginSuggestion.suggestedResellerPrice - marginSuggestion.cost)})</p>}</div></td>
+                          <td className="px-3 py-3"><div className="space-y-1"><span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold', item ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{item ? 'En la lista' : 'Fuera de la lista'}</span><p className="text-xs text-[var(--ink-muted)]">{item?.availability === 'on_order' ? 'Por pedido' : item ? 'Disponible' : statusLabel}</p>{advice && advice.status !== 'balanced' && <p title={advice.message} className="max-w-52 text-[11px] leading-snug text-[var(--ink-muted)]">{advice.message}</p>}{item && marginSuggestion?.low && <p className="max-w-52 text-xs text-[var(--ink-muted)]">Sugerido: {formatCurrency(marginSuggestion.suggestedResellerPrice)} (ganás {formatCurrency(marginSuggestion.suggestedResellerPrice - marginSuggestion.cost)})</p>}</div></td>
                           <td className="space-y-1 px-3 py-3 text-right"><button type="button" onClick={() => onEditCatalogProduct(product)} disabled={!canWrite || bulkBusy} className="min-h-8 rounded-lg border border-[var(--line)] px-2 text-[11px] font-semibold text-[var(--ink)] disabled:opacity-45">Editar ficha</button>{item ? <button type="button" onClick={() => setEditingPriceProductId(expanded ? null : product.id)} disabled={!canWrite || bulkBusy} aria-expanded={expanded} className="block min-h-8 w-full rounded-lg border border-[var(--line)] px-2 text-[11px] font-semibold text-[var(--ink)] disabled:opacity-45">{expanded ? 'Cerrar precio' : 'Editar precio'}</button> : <button type="button" onClick={() => toggleProduct(product)} disabled={!canWrite || bulkBusy} className="block min-h-8 w-full rounded-lg bg-[var(--primary)] px-2 text-[11px] font-semibold text-[var(--primary-ink)] disabled:opacity-50">Agregar a la lista</button>}{item && marginSuggestion?.low && <button type="button" onClick={() => requestMarginPriceApply([product.id])} disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved'} className="block min-h-8 w-full rounded-lg bg-[var(--primary)] px-2 text-[11px] font-semibold text-[var(--primary-ink)] disabled:opacity-50">Aplicar</button>}</td>
                         </tr>
                         {expanded && item && <tr className="border-b border-[var(--line)] bg-[var(--surface-2)]/60"><td colSpan={8} className="px-4 py-4">
