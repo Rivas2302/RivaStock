@@ -81,7 +81,6 @@ AS $$
     'closesAt', round.closes_at,
     'minimumOrderAmount', round.minimum_order_amount,
     'minimumOrderQuantity', round.minimum_order_quantity,
-    'supplierMinimumOrderAmount', round.supplier_minimum_order_amount,
     'products', COALESCE((
       SELECT jsonb_agg(jsonb_build_object(
         'id', product.id,
