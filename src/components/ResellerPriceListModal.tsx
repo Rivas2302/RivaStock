@@ -2538,7 +2538,7 @@ export default function ResellerPriceListModal({
         minimumOrderAmount,
         minimumOrderQuantity,
       });
-      const productUrlByProductId = publicCatalogUrl
+      const productUrlByProductId = publicCatalogUrl && publicEnabled
         ? Object.fromEntries(exportProducts.map(product => {
           const catalogUrl = new URL(publicCatalogUrl);
           const catalogBase = `${catalogUrl.origin}${catalogUrl.pathname.replace(/\/+$/, '')}/`;
