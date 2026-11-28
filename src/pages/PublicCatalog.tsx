@@ -507,7 +507,8 @@ useEffect(() => {
         setResellerAvailable(hasResellerCatalog);
         const savedAccessCode = sessionStorage.getItem(`catalog-reseller-session:${slug}`)?.trim() ?? '';
         const savedChannel = sessionStorage.getItem(`catalog-channel:${slug}`);
-        if (hasResellerCatalog && savedAccessCode && savedChannel === 'reseller') {
+        const requestedResellerChannel = new URLSearchParams(routeLocationRef.current.search).get('channel') === 'reseller';
+        if (hasResellerCatalog && savedAccessCode && (savedChannel === 'reseller' || requestedResellerChannel)) {
           try {
             const [unlocked, policy, rounds] = await Promise.all([
               unlockResellerCatalog(slug, savedAccessCode),
@@ -518,14 +519,24 @@ useEffect(() => {
             setResellerCatalog(unlocked);
             setResellerBuyingPolicy(policy);
             setSupplierRounds(rounds);
-            setSelectedSupplierRoundId(rounds[0]?.id ?? null);
+            const requestedParams = new URLSearchParams(routeLocationRef.current.search);
+            const requestedRoundId = requestedParams.get('round');
+            const requestedProductId = productIdRef.current;
+            const preferredRound = rounds.find(round => round.id === requestedRoundId)
+              ?? rounds.find(round => requestedProductId && round.products.some(product => product.id === requestedProductId))
+              ?? (!requestedProductId ? rounds[0] : null);
+            setSelectedSupplierRoundId(preferredRound?.id ?? null);
             setResellerAccessCode(savedAccessCode);
+            sessionStorage.setItem(`catalog-channel:${slug}`, 'reseller');
             setChannel('reseller');
-            setProducts(rounds[0] ? toRoundProducts(rounds[0]) : unlocked.products);
+            setProducts(preferredRound ? toRoundProducts(preferredRound) : unlocked.products);
           } catch {
             sessionStorage.removeItem(`catalog-reseller-session:${slug}`);
             sessionStorage.setItem(`catalog-channel:${slug}`, 'retail');
+            if (requestedResellerChannel) setIsAccessOpen(true);
           }
+        } else if (hasResellerCatalog && requestedResellerChannel) {
+          setIsAccessOpen(true);
         }
       } catch (err) {
         if (cancelled) return;
@@ -874,12 +885,18 @@ useEffect(() => {
       setResellerCatalog(unlocked);
       setResellerBuyingPolicy(buyingPolicy);
       setSupplierRounds(rounds);
-      setSelectedSupplierRoundId(rounds[0]?.id ?? null);
+      const requestedParams = new URLSearchParams(routeLocationRef.current.search);
+      const requestedRoundId = requestedParams.get('round');
+      const requestedProductId = productIdRef.current;
+      const preferredRound = rounds.find(round => round.id === requestedRoundId)
+        ?? rounds.find(round => requestedProductId && round.products.some(product => product.id === requestedProductId))
+        ?? (!requestedProductId ? rounds[0] : null);
+      setSelectedSupplierRoundId(preferredRound?.id ?? null);
       setResellerAccessCode(accessCodeInput.trim());
       sessionStorage.setItem(`catalog-reseller-session:${slug}`, accessCodeInput.trim());
       sessionStorage.setItem(`catalog-channel:${slug}`, 'reseller');
       setChannel('reseller');
-      setProducts(rounds[0] ? toRoundProducts(rounds[0]) : unlocked.products);
+      setProducts(preferredRound ? toRoundProducts(preferredRound) : unlocked.products);
       setCart([]);
       setActiveCategory('all');
       setAvailabilityFilter('all');
