@@ -582,7 +582,7 @@ export default function ProductPhotos() {
   const copyFallbackText = async () => {
     try {
       await navigator.clipboard.writeText(fallbackText);
-      showToast('Texto copiado al portapapeles.', 'success');
+      showToast('Mensaje copiado al portapapeles.', 'success');
     } catch {
       showToast('No se pudo acceder al portapapeles de este navegador.', 'error');
     }
@@ -819,7 +819,7 @@ export default function ProductPhotos() {
                               <span className="text-xs">Sin foto</span>
                             </div>
                           )}
-                          <span className="absolute bottom-2 left-2 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-white">{availabilityLabel}</span>
+                          <span className={'absolute bottom-2 left-2 rounded-full px-2 py-1 text-xs font-semibold text-white ' + (stock > 0 ? 'bg-emerald-700/90' : availabilityLabel === 'Bajo pedido' ? 'bg-amber-700/90' : 'bg-black/75')}>{availabilityLabel}</span>
                         </div>
                         <div className="space-y-1 p-3">
                           <h3 className="line-clamp-2 min-h-10 font-semibold text-slate-900 dark:text-white">{product.name}</h3>
@@ -945,11 +945,11 @@ export default function ProductPhotos() {
       )}
 
       {fallbackFiles.length > 0 && (
-        <section className="fixed inset-x-3 bottom-24 z-40 mx-auto max-h-[45vh] max-w-xl overflow-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900 md:bottom-20" aria-label="Guardar fotos y copiar texto">
+        <section className="fixed inset-x-3 bottom-24 z-[70] mx-auto max-h-[45vh] max-w-xl overflow-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900 md:bottom-20" aria-label="Guardar fotos y copiar mensaje">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="font-bold text-slate-900 dark:text-white">Guardar y copiar</h3>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Guardá las fotos y pegá el texto en la aplicación que uses.</p>
+              <h3 className="font-bold text-slate-900 dark:text-white">Guardar fotos y mensaje</h3>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Guardá las fotos y copiá el mensaje para WhatsApp.</p>
             </div>
             <button type="button" aria-label="Cerrar opciones de guardado" onClick={() => setFallbackFiles([])} className="rounded-lg p-1 text-slate-400"><ProductPhotoIcon name="x" size={20}  /></button>
           </div>
@@ -960,7 +960,7 @@ export default function ProductPhotos() {
               </button>
             ))}
             <button type="button" onClick={() => void copyFallbackText()} className="flex items-center gap-2 rounded-lg bg-[#365fad] px-3 py-2 text-sm font-semibold text-white">
-              <ProductPhotoIcon name="copy" size={16}  /> Copiar texto
+              <ProductPhotoIcon name="copy" size={16}  /> Copiar mensaje
             </button>
           </div>
           <p className="mt-3 whitespace-pre-line rounded-lg bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{fallbackText}</p>
