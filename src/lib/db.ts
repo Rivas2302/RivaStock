@@ -109,6 +109,7 @@ const RPC_INVALIDATIONS: Record<string, string[]> = {
   toggle_attributed_sale_status: ['sales', 'cash_flow', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   register_supplier:    ['suppliers'],
   update_supplier:      ['suppliers'],
+  update_supplier_purchase_conditions: ['suppliers'],
   delete_supplier:      ['suppliers'],
   toggle_supplier_active: ['suppliers'],
   create_inventory_owner: ['inventory_owners'],
