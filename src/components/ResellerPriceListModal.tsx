@@ -516,6 +516,10 @@ export default function ResellerPriceListModal({
   const [itemsDirty, setItemsDirty] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ url: string; fileName: string } | null>(null);
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
+  const [pdfExportScope, setPdfExportScope] = useState<'full' | 'filtered' | 'selected'>('filtered');
+  const [pdfExportFormat, setPdfExportFormat] = useState<'compact' | 'photos'>('compact');
+  const [pdfExportGrouped, setPdfExportGrouped] = useState(true);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -1901,7 +1905,7 @@ export default function ResellerPriceListModal({
   const [supplierExtensionHelpVisible, setSupplierExtensionHelpVisible] = useState(false);
 
   const resellerDialogOpen = accessCodeDialogOpen || supplierExtensionHelpOpen || supplierImportConfirmation !== null
-    || bulkConfirmation !== null || marginApplyConfirmation !== null || removalSupplier !== null || pdfPreview !== null;
+    || bulkConfirmation !== null || marginApplyConfirmation !== null || removalSupplier !== null || pdfPreview !== null || pdfExportOpen;
   const hideResellerBottomNavigation = displayMode === 'page'
     && (Boolean(editingPriceProduct) || selectedPriceProducts.length > 0 || resellerDialogOpen);
   useMobileAppChrome({ hideHeader: false, hideBottomNav: hideResellerBottomNavigation });
@@ -2451,7 +2455,12 @@ export default function ResellerPriceListModal({
     }
   };
 
-  const handlePdf = async (action: 'preview' | 'download') => {
+  const handlePdf = async (
+    action: 'preview' | 'download',
+    scope: 'full' | 'filtered' | 'selected' = pdfExportScope,
+    format: 'compact' | 'photos' = pdfExportFormat,
+    groupByCategory = pdfExportGrouped,
+  ) => {
     if (!list || generating || items.length === 0) return;
     const useNativePdfPreview = action === 'preview' && window.matchMedia(
       '(max-width: 767px), (hover: none) and (pointer: coarse)',
@@ -2460,21 +2469,35 @@ export default function ResellerPriceListModal({
     setGenerating(true);
     try {
       const draftList = { ...list, defaultDiscountPercent: discount };
+      const listedProducts = buildPriceListProducts(products, draftList, items);
+      const exportProducts = scope === 'full'
+        ? listedProducts
+        : buildPriceListProducts(
+          scope === 'filtered'
+            ? resellerVisibleProducts.filter(product => itemByProductId.has(product.id))
+            : selectedPriceProducts.filter(product => itemByProductId.has(product.id)),
+          draftList,
+          items,
+        );
       const commercialNotice = getCommercialRuleMessage({
         minimumRule,
         minimumOrderAmount,
         minimumOrderQuantity,
       });
       const pdf = await createPriceListPdf({
-        products: buildPriceListProducts(products, draftList, items),
+        products: exportProducts,
         categories,
         businessName,
         currencySymbol,
         inventoryOwners,
-        title: 'Lista de precios para revendedores',
-        fileNamePrefix: 'lista-revendedores',
+        title: format === 'photos' ? 'Catálogo para revendedores' : 'Lista de precios para revendedores',
+        fileNamePrefix: format === 'photos' ? 'catalogo-revendedores' : 'lista-revendedores',
         availabilityByProductId: buildAvailabilityMap(items),
         commercialNotice,
+        includeInventoryOwner: false,
+        includeInternalNotes: false,
+        includePhotos: format === 'photos',
+        groupByCategory,
       });
       const url = URL.createObjectURL(pdf.blob);
       if (action === 'preview') {
@@ -2703,7 +2726,7 @@ export default function ResellerPriceListModal({
                 </div>
                 <div className="flex min-h-16 items-center justify-between gap-4 py-3">
                   <div><p className="text-sm font-semibold">Lista en PDF</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Para mandar por WhatsApp a quien no usa el catálogo.</p></div>
-                  <div className="flex shrink-0 gap-2"><button type="button" onClick={() => void handlePdf('preview')} disabled={generating || items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Ver</button><button type="button" onClick={() => void handlePdf('download')} disabled={generating || items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Descargar</button></div>
+                  <div className="flex shrink-0 gap-2"><button type="button" onClick={() => setPdfExportOpen(true)} disabled={items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Exportar</button></div>
                 </div>
               </div>
             </section>
@@ -3178,10 +3201,10 @@ export default function ResellerPriceListModal({
                   <summary aria-label="Más opciones de la lista de precios" className="flex min-h-10 min-w-10 cursor-pointer list-none items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-xl font-semibold text-[var(--ink)] [&::-webkit-details-marker]:hidden">⋯</summary>
                   <div className="absolute right-0 top-full z-30 mt-1 min-w-52 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-1 shadow-xl">
                     <button type="button" onClick={() => onCreateProduct()} disabled={!canWrite} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Crear producto por pedido</button>
-                    <button type="button" onClick={() => void handlePdf('preview')} disabled={generating || items.length === 0} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Ver PDF</button>
-                    <button type="button" onClick={() => void handlePdf('download')} disabled={generating || items.length === 0} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Descargar PDF</button>
+                    <button type="button" onClick={() => setPdfExportOpen(true)} disabled={items.length === 0} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Exportar PDF</button>
                   </div>
                 </details>
+                <button type="button" onClick={() => setPdfExportOpen(true)} disabled={items.length === 0} className="hidden min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)] disabled:opacity-50 sm:inline-flex"><Download size={17} /> Exportar</button>
                 <button type="button" onClick={() => onCreateProduct()} disabled={!canWrite}
                   className="hidden min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50 sm:inline-flex">
                   <PackagePlus size={17} /> Crear producto por pedido
@@ -3209,6 +3232,23 @@ export default function ResellerPriceListModal({
                   <button type="button" onClick={() => { setCategoryFilter('all'); setPriceMinFilter(''); setPriceMaxFilter(''); setAvailabilityFilter('all'); setWithoutPhotoFilter(false); setUncategorizedFilter(false); setPriceListInclusionFilter('all'); setProductListSourceFilter('all'); setAdvisorFilter('all'); setMarginFilter('all'); setSearch(''); setPriceProductPage(0); }} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold">Limpiar filtros</button>
                 </div>
               </div>}
+              {pdfExportOpen && <section aria-label="Opciones de exportación" className="grid gap-3 rounded-xl border border-[var(--accent)] bg-[var(--surface-1)] p-4 md:grid-cols-[1.2fr_1fr_auto] md:items-end">
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Qué productos incluir<select value={pdfExportScope} onChange={event => setPdfExportScope(event.target.value as typeof pdfExportScope)} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 text-sm text-[var(--ink)]">
+                  <option value="full">Lista completa · {items.length} productos</option>
+                  <option value="filtered">Resultados filtrados · {resellerVisibleProducts.filter(product => itemByProductId.has(product.id)).length} en la lista</option>
+                  <option value="selected">Solo seleccionados · {selectedPriceProducts.filter(product => itemByProductId.has(product.id)).length}</option>
+                </select></label>
+                <fieldset className="flex flex-wrap gap-2">
+                  <legend className="mb-1 text-xs font-semibold text-[var(--ink-muted)]">Formato</legend>
+                  {([['compact', 'Lista compacta'], ['photos', 'Catálogo con fotos']] as const).map(([format, label]) => <button key={format} type="button" aria-pressed={pdfExportFormat === format} onClick={() => setPdfExportFormat(format)} className={cn('min-h-9 rounded-lg border px-3 text-xs font-semibold', pdfExportFormat === format ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'border-[var(--line)] text-[var(--ink-muted)]')}>{label}</button>)}
+                  <label className="flex min-h-9 items-center gap-2 px-2 text-xs font-semibold"><input type="checkbox" checked={pdfExportGrouped} onChange={event => setPdfExportGrouped(event.target.checked)} className="size-4 accent-[var(--accent)]" />Agrupar por categoría</label>
+                </fieldset>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setPdfExportOpen(false)} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Cerrar</button>
+                  <button type="button" onClick={() => void handlePdf('preview')} disabled={generating || (pdfExportScope === 'selected' && selectedPriceProducts.length === 0)} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">{generating ? 'Preparando…' : 'Ver PDF'}</button>
+                  <button type="button" onClick={() => void handlePdf('download')} disabled={generating || (pdfExportScope === 'selected' && selectedPriceProducts.length === 0)} className="min-h-10 rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{generating ? 'Preparando…' : 'Descargar'}</button>
+                </div>
+              </section>}
               {categories.length > 0 && supplierCategoryReviewGroups.length > 0 && <section className="flex flex-col gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-[var(--ink)]">Categorías de proveedores</p>
