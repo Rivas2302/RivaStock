@@ -803,8 +803,15 @@ useEffect(() => {
   const activeSupplierRound = channel === 'reseller'
     ? supplierRounds.find(round => round.id === selectedSupplierRoundId) ?? null
     : null;
-  const roundMinimumMessage = activeSupplierRound && cartTotal < activeSupplierRound.minimumOrderAmount
-    ? `El mínimo de esta ronda es ${formatCurrency(activeSupplierRound.minimumOrderAmount)}.`
+  const roundMinimumRequirements: string[] = [];
+  if (activeSupplierRound && activeSupplierRound.minimumOrderQuantity > cartItemCount) {
+    roundMinimumRequirements.push(`al menos ${activeSupplierRound.minimumOrderQuantity} unidades`);
+  }
+  if (activeSupplierRound && activeSupplierRound.minimumOrderAmount > cartTotal) {
+    roundMinimumRequirements.push(`${formatCurrency(activeSupplierRound.minimumOrderAmount)} por pedido`);
+  }
+  const roundMinimumMessage = roundMinimumRequirements.length
+    ? `Esta tanda requiere ${roundMinimumRequirements.join(' y ')}.`
     : null;
   const commercialRuleMessage = roundMinimumMessage ?? (resellerCatalog ? getCommercialRuleMessage(resellerCatalog) : null);
   const commercialRuleSatisfied = channel !== 'reseller' || !resellerCatalog
