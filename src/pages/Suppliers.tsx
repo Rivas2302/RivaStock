@@ -74,7 +74,7 @@ export default function Suppliers() {
   }, [suppliers]);
 
   const missingFields = (supplier: Supplier) => [
-    ...(!supplier.phone && !supplier.email ? ['Contacto'] : []),
+    ...(!supplier.phone && !supplier.email ? ['Teléfono o email'] : []),
     ...(!supplier.catalogUrl ? ['Catálogo'] : []),
     ...(!supplier.paymentTerms ? ['Condición de pago'] : []),
   ];
@@ -198,7 +198,7 @@ export default function Suppliers() {
         <button type="button" onClick={() => setShowMissingInfo(true)} className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left shadow-sm transition hover:border-amber-400 dark:border-amber-900/50 dark:bg-amber-950/20">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Faltan datos de compra</p>
           <p className="mt-1 text-3xl font-black text-amber-800 dark:text-amber-200">{stats.missingInfo.length}</p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Contacto, catálogo o condición de pago pendientes</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Teléfono o email, catálogo o condición de pago pendientes</p>
         </button>
       </div>
 
@@ -371,7 +371,7 @@ export default function Suppliers() {
       </Modal>
 
       <Modal isOpen={showMissingInfo} onClose={() => setShowMissingInfo(false)} title="Faltan datos de compra" className="max-w-xl">
-        <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">Proveedores activos sin contacto, catálogo o condición de pago registrada.</p>
+        <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">Proveedores activos sin teléfono o email, catálogo o condición de pago registrada.</p>
         <div className="max-h-[55vh] space-y-2 overflow-y-auto">
           {stats.missingInfo.map(supplier => <button key={supplier.id} type="button" onClick={() => { setShowMissingInfo(false); setSelectedSupplier(supplier); }} className="flex min-h-14 w-full items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-left dark:border-slate-700">
             <span className="font-semibold text-slate-900 dark:text-white">{supplier.name}</span><span className="flex flex-wrap justify-end gap-1">{missingFields(supplier).map(field => <span key={field} className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">{field}</span>)}</span>
