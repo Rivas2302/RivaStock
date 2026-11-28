@@ -309,6 +309,8 @@ export async function loadResellerSupplierRounds(supplierListId: string): Promis
     return {
       ...round,
       minimumOrderAmount: Number(round.minimumOrderAmount ?? 0),
+      minimumOrderQuantity: Number(round.minimumOrderQuantity ?? 0),
+      supplierMinimumOrderAmount: Number(round.supplierMinimumOrderAmount ?? 0),
       orders: ordersByRound.get(round.id) ?? [],
     };
   });
@@ -318,6 +320,8 @@ export async function createResellerSupplierOrderRound(input: {
   supplierListId: string;
   closesAt: string;
   minimumOrderAmount: number;
+  minimumOrderQuantity: number;
+  supplierMinimumOrderAmount: number;
   audienceName: string;
   audienceCode: string;
 }): Promise<ResellerSupplierOrderRound> {
@@ -325,6 +329,8 @@ export async function createResellerSupplierOrderRound(input: {
     p_supplier_list_id: input.supplierListId,
     p_closes_at: input.closesAt,
     p_minimum_order_amount: Math.max(0, input.minimumOrderAmount),
+    p_minimum_order_quantity: Math.max(0, Math.floor(input.minimumOrderQuantity)),
+    p_supplier_minimum_order_amount: Math.max(0, input.supplierMinimumOrderAmount),
     p_audience_name: input.audienceName.trim(),
     p_audience_code: input.audienceCode.trim(),
   });
