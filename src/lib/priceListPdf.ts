@@ -18,6 +18,7 @@ interface PriceListPdfOptions {
   includeInternalNotes?: boolean;
   includeCode?: boolean;
   includePhotos?: boolean;
+  productUrlByProductId?: Record<string, string>;
   groupByCategory?: boolean;
 }
 
@@ -129,6 +130,7 @@ export async function createPriceListPdf({
   includeInternalNotes = true,
   includeCode = true,
   includePhotos = false,
+  productUrlByProductId,
   groupByCategory = true,
 }: PriceListPdfOptions): Promise<PriceListPdf> {
   const { jsPDF, autoTable } = await loadPdfRuntime();
@@ -250,8 +252,10 @@ export async function createPriceListPdf({
         const ownerLabel = ownerName ? ` — ${ownerName}` : '';
         const productLabel = `${product.name}${ownerLabel}`;
         const productCell = code ? `${productLabel}\\nCódigo: ${code}` : productLabel;
+        const productUrl = productUrlByProductId?.[product.id];
+        const photoProductCell = productUrl ? `${productLabel}\\nVer precio actualizado` : productCell;
         const cells = includePhotos
-          ? ['', productCell, getProductDescription(product, includeInternalNotes)]
+          ? ['', photoProductCell, getProductDescription(product, includeInternalNotes)]
           : [productCell, getProductDescription(product, includeInternalNotes)];
         if (showAvailability) {
           cells.push(
@@ -307,11 +311,19 @@ export async function createPriceListPdf({
           2: { cellWidth: contentWidth * 0.20, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
         }),
       didDrawCell: (data) => {
-        if (!includePhotos || data.section !== 'body' || data.column.index !== 0) return;
-        const imageData = imageDataByProductId.get(group.items[data.row.index]?.id);
-        if (!imageData) return;
-        const size = Math.max(1, Math.min(data.cell.width - 2, data.cell.height - 2));
-        doc.addImage(imageData, 'JPEG', data.cell.x + (data.cell.width - size) / 2, data.cell.y + (data.cell.height - size) / 2, size, size);
+        if (!includePhotos || data.section !== 'body') return;
+        const product = group.items[data.row.index];
+        if (data.column.index === 0) {
+          const imageData = imageDataByProductId.get(product?.id);
+          if (imageData) {
+            const size = Math.max(1, Math.min(data.cell.width - 2, data.cell.height - 2));
+            doc.addImage(imageData, 'JPEG', data.cell.x + (data.cell.width - size) / 2, data.cell.y + (data.cell.height - size) / 2, size, size);
+          }
+          return;
+        }
+        if (data.column.index === 1 && product?.id && productUrlByProductId?.[product.id]) {
+          doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: productUrlByProductId[product.id] });
+        }
       },
       didDrawPage: (data) => {
         if (data.pageNumber > 1) drawPageHeader(data.pageNumber);
