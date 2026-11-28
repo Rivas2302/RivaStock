@@ -457,7 +457,6 @@ export interface PublicResellerSupplierRound {
   closesAt: string;
   minimumOrderAmount: number;
   minimumOrderQuantity: number;
-  supplierMinimumOrderAmount: number;
   products: Array<Pick<PublicCatalogProduct, 'id' | 'name' | 'categoryId' | 'category' | 'salePrice' | 'imageUrl' | 'images'>>;
 }
 
