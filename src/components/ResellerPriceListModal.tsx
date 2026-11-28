@@ -2219,12 +2219,17 @@ export default function ResellerPriceListModal({
           if (entry.action === 'unchanged') continue;
           const existing = entry.existingProduct;
           const sourceCategory = entry.row.category.trim();
+          const sourceName = entry.row.name.trim();
+          const previousSourceName = String(existing?.customFields?.supplierImportSourceName ?? '').trim();
+          const preserveCustomName = Boolean(existing && previousSourceName
+            && existing.name.trim().toLocaleLowerCase('es-AR') !== previousSourceName.toLocaleLowerCase('es-AR'));
           const resolvedCategory = resolveSupplierImportCategory(sourceCategory, entry.row.targetCategoryId, categories);
           const now = new Date().toISOString();
           const photoBrandFields = supplierPhotoReviewFields(entry.row.photoBrandReview, Boolean(supplierImportPhotoFiles[entry.row.sourceRow]));
           const customFields = { ...(existing?.customFields ?? {}), ...(photoBrandFields ?? {}) };
           Object.assign(customFields, clearSupplierProductNoPriceStatus(customFields, editingSupplierId));
           customFields.supplierImportSupplierId = editingSupplierId;
+          customFields.supplierImportSourceName = sourceName;
           customFields.supplierImportSourceCategory = sourceCategory;
           if (supplierRivaCatalogSource) customFields.rivaCatalogSupplierImport = true;
           else delete customFields.rivaCatalogSupplierImport;
@@ -2233,7 +2238,7 @@ export default function ResellerPriceListModal({
           const product: Product = {
             ...(existing ?? {} as Product),
             id: resolvedIds.get(entry.row.sourceRow)!,
-            name: entry.row.name.trim(),
+            name: preserveCustomName ? existing!.name : sourceName,
             categoryId: resolvedCategory.categoryId,
             category: resolvedCategory.category,
             purchasePrice: existing?.purchasePrice ?? 0,
