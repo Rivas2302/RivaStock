@@ -412,6 +412,10 @@ export default function ResellerPriceListModal({
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [priceMinFilter, setPriceMinFilter] = useState('');
   const [priceMaxFilter, setPriceMaxFilter] = useState('');
+  const [profitMinFilter, setProfitMinFilter] = useState('');
+  const [profitMaxFilter, setProfitMaxFilter] = useState('');
+  const [marginMinFilter, setMarginMinFilter] = useState('');
+  const [marginMaxFilter, setMarginMaxFilter] = useState('');
   const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'in_stock' | 'on_order' | 'out_of_stock'>('all');
   const [withoutPhotoFilter, setWithoutPhotoFilter] = useState(false);
   const [uncategorizedFilter, setUncategorizedFilter] = useState(false);
@@ -905,9 +909,10 @@ export default function ResellerPriceListModal({
     searchMatchedProducts.filter(product => {
       if (!matchesResellerPricingAdviceFilter(pricingAdviceByProductId.get(product.id)?.status, advisorFilter)) return false;
       if (marginFilter === 'low' && marginSuggestionsByProductId.get(product.id)?.low !== true) return false;
-      if (categoryFilter !== 'all' && product.categoryId !== categoryFilter) return false;
-      if (withoutPhotoFilter && (product.images?.some(Boolean) || product.imageUrl)) return false;
       const productCategory = categories.find(category => category.id === product.categoryId);
+      if (categoryFilter === 'uncategorized' && productCategory) return false;
+      if (categoryFilter !== 'all' && categoryFilter !== 'uncategorized' && product.categoryId !== categoryFilter) return false;
+      if (withoutPhotoFilter && (product.images?.some(Boolean) || product.imageUrl)) return false;
       if (uncategorizedFilter && productCategory) return false;
       const item = itemByProductId.get(product.id);
       const resellerPrice = resolvePriceListPrice(product.salePrice, discount, item ?? { pricingMode: 'default', discountPercent: null, fixedPrice: null });
@@ -915,12 +920,23 @@ export default function ResellerPriceListModal({
       const maxPrice = priceMaxFilter.trim() ? Number(priceMaxFilter) : null;
       if (minPrice !== null && Number.isFinite(minPrice) && resellerPrice < minPrice) return false;
       if (maxPrice !== null && Number.isFinite(maxPrice) && resellerPrice > maxPrice) return false;
+      const economics = getResellerProductEconomics(product, holdings, holdingsEnabled);
+      const unitProfit = economics.purchaseCost === null ? null : resellerPrice - economics.purchaseCost;
+      const marginPercent = resellerPrice > 0 && unitProfit !== null ? unitProfit / resellerPrice * 100 : null;
+      const profitMin = profitMinFilter.trim() ? Number(profitMinFilter) : null;
+      const profitMax = profitMaxFilter.trim() ? Number(profitMaxFilter) : null;
+      const marginMin = marginMinFilter.trim() ? Number(marginMinFilter) : null;
+      const marginMax = marginMaxFilter.trim() ? Number(marginMaxFilter) : null;
+      if (profitMin !== null && Number.isFinite(profitMin) && (unitProfit === null || unitProfit < profitMin)) return false;
+      if (profitMax !== null && Number.isFinite(profitMax) && (unitProfit === null || unitProfit > profitMax)) return false;
+      if (marginMin !== null && Number.isFinite(marginMin) && (marginPercent === null || marginPercent < marginMin)) return false;
+      if (marginMax !== null && Number.isFinite(marginMax) && (marginPercent === null || marginPercent > marginMax)) return false;
       if (availabilityFilter === 'in_stock' && (item?.availability === 'on_order' || product.stock <= 0)) return false;
       if (availabilityFilter === 'on_order' && item?.availability !== 'on_order') return false;
       if (availabilityFilter === 'out_of_stock' && (item?.availability === 'on_order' || product.stock > 0)) return false;
       return true;
     })
-  ), [advisorFilter, availabilityFilter, categories, categoryFilter, discount, itemByProductId, marginFilter, marginSuggestionsByProductId, priceMaxFilter, priceMinFilter, pricingAdviceByProductId, searchMatchedProducts, uncategorizedFilter, withoutPhotoFilter]);
+  ), [advisorFilter, availabilityFilter, categories, categoryFilter, discount, holdings, holdingsEnabled, itemByProductId, marginFilter, marginMaxFilter, marginMinFilter, marginSuggestionsByProductId, priceMaxFilter, priceMinFilter, profitMaxFilter, profitMinFilter, pricingAdviceByProductId, searchMatchedProducts, uncategorizedFilter, withoutPhotoFilter]);
 
   const supplierListBySupplierId = useMemo(
     () => new Map(supplierLists.map((supplierList) => [supplierList.supplierId, supplierList])),
@@ -962,6 +978,9 @@ export default function ResellerPriceListModal({
   const selectedPageCount = visiblePricePageProducts.filter(product => selectedPriceProductIds.has(product.id)).length;
   const allPricePageSelected = visiblePricePageProducts.length > 0 && selectedPageCount === visiblePricePageProducts.length;
   const selectedPriceProducts = resellerVisibleProducts.filter(product => selectedPriceProductIds.has(product.id));
+  const exportableFilteredCount = resellerVisibleProducts.filter(product => itemByProductId.has(product.id)).length;
+  const exportableSelectedCount = selectedPriceProducts.filter(product => itemByProductId.has(product.id)).length;
+  const pdfExportProductCount = pdfExportScope === 'full' ? items.length : pdfExportScope === 'filtered' ? exportableFilteredCount : exportableSelectedCount;
   const selectedProductIds = selectedPriceProducts.map(product => product.id);
   const selectedMarginApplyIds = selectedProductIds.filter(productId => marginSuggestionsByProductId.has(productId));
   const lowMarginProductCount = Array.from(marginSuggestionsByProductId.values()).filter(suggestion => suggestion.low).length;
@@ -3225,18 +3244,22 @@ export default function ResellerPriceListModal({
               {advancedFiltersOpen && <div className="grid gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 sm:grid-cols-2 xl:grid-cols-4">
                 <label className="text-xs font-semibold text-[var(--ink-muted)]">Precio revendedor desde<input type="number" min="0" value={priceMinFilter} onChange={event => { setPriceMinFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
                 <label className="text-xs font-semibold text-[var(--ink-muted)]">Precio revendedor hasta<input type="number" min="0" value={priceMaxFilter} onChange={event => { setPriceMaxFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Ganancia por unidad desde<input type="number" min="0" value={profitMinFilter} onChange={event => { setProfitMinFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Ganancia por unidad hasta<input type="number" min="0" value={profitMaxFilter} onChange={event => { setProfitMaxFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Margen desde %<input type="number" min="0" value={marginMinFilter} onChange={event => { setMarginMinFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
+                <label className="text-xs font-semibold text-[var(--ink-muted)]">Margen hasta %<input type="number" min="0" value={marginMaxFilter} onChange={event => { setMarginMaxFilter(event.target.value); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>
                 <label className="text-xs font-semibold text-[var(--ink-muted)]">Disponibilidad<select value={availabilityFilter} onChange={event => { setAvailabilityFilter(event.target.value as typeof availabilityFilter); setPriceProductPage(0); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]"><option value="all">Cualquiera</option><option value="in_stock">Con stock</option><option value="on_order">Por pedido</option><option value="out_of_stock">Agotado</option></select></label>
                 <div className="flex flex-wrap items-end gap-3">
                   <label className="flex min-h-10 items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={withoutPhotoFilter} onChange={event => setWithoutPhotoFilter(event.target.checked)} className="size-4 accent-[var(--accent)]" />Sin foto</label>
                   <label className="flex min-h-10 items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={uncategorizedFilter} onChange={event => setUncategorizedFilter(event.target.checked)} className="size-4 accent-[var(--accent)]" />Sin categoría</label>
-                  <button type="button" onClick={() => { setCategoryFilter('all'); setPriceMinFilter(''); setPriceMaxFilter(''); setAvailabilityFilter('all'); setWithoutPhotoFilter(false); setUncategorizedFilter(false); setPriceListInclusionFilter('all'); setProductListSourceFilter('all'); setAdvisorFilter('all'); setMarginFilter('all'); setSearch(''); setPriceProductPage(0); }} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold">Limpiar filtros</button>
+                  <button type="button" onClick={() => { setCategoryFilter('all'); setPriceMinFilter(''); setPriceMaxFilter(''); setProfitMinFilter(''); setProfitMaxFilter(''); setMarginMinFilter(''); setMarginMaxFilter(''); setAvailabilityFilter('all'); setWithoutPhotoFilter(false); setUncategorizedFilter(false); setPriceListInclusionFilter('all'); setProductListSourceFilter('all'); setAdvisorFilter('all'); setMarginFilter('all'); setSearch(''); setPriceProductPage(0); }} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold">Limpiar filtros</button>
                 </div>
               </div>}
               {pdfExportOpen && <section aria-label="Opciones de exportación" className="grid gap-3 rounded-xl border border-[var(--accent)] bg-[var(--surface-1)] p-4 md:grid-cols-[1.2fr_1fr_auto] md:items-end">
                 <label className="text-xs font-semibold text-[var(--ink-muted)]">Qué productos incluir<select value={pdfExportScope} onChange={event => setPdfExportScope(event.target.value as typeof pdfExportScope)} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 text-sm text-[var(--ink)]">
                   <option value="full">Lista completa · {items.length} productos</option>
-                  <option value="filtered">Resultados filtrados · {resellerVisibleProducts.filter(product => itemByProductId.has(product.id)).length} en la lista</option>
-                  <option value="selected">Solo seleccionados · {selectedPriceProducts.filter(product => itemByProductId.has(product.id)).length}</option>
+                  <option value="filtered">Resultados filtrados · {exportableFilteredCount} en la lista</option>
+                  <option value="selected">Solo seleccionados · {exportableSelectedCount}</option>
                 </select></label>
                 <fieldset className="flex flex-wrap gap-2">
                   <legend className="mb-1 text-xs font-semibold text-[var(--ink-muted)]">Formato</legend>
@@ -3245,8 +3268,8 @@ export default function ResellerPriceListModal({
                 </fieldset>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => setPdfExportOpen(false)} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Cerrar</button>
-                  <button type="button" onClick={() => void handlePdf('preview')} disabled={generating || (pdfExportScope === 'selected' && selectedPriceProducts.length === 0)} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">{generating ? 'Preparando…' : 'Ver PDF'}</button>
-                  <button type="button" onClick={() => void handlePdf('download')} disabled={generating || (pdfExportScope === 'selected' && selectedPriceProducts.length === 0)} className="min-h-10 rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{generating ? 'Preparando…' : 'Descargar'}</button>
+                  <button type="button" onClick={() => void handlePdf('preview')} disabled={generating || pdfExportProductCount === 0} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">{generating ? 'Preparando…' : 'Ver PDF'}</button>
+                  <button type="button" onClick={() => void handlePdf('download')} disabled={generating || pdfExportProductCount === 0} className="min-h-10 rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{generating ? 'Preparando…' : 'Descargar'}</button>
                 </div>
               </section>}
               {categories.length > 0 && supplierCategoryReviewGroups.length > 0 && <section className="flex flex-col gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 sm:flex-row sm:items-center">
@@ -3287,7 +3310,7 @@ export default function ResellerPriceListModal({
                 <button type="button" aria-pressed={priceListInclusionFilter === 'excluded'}
                   onClick={() => { setPriceListInclusionFilter('excluded'); setAdvisorFilter('all'); setMarginFilter('all'); setPriceProductPage(0); }}
                   className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'excluded' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
-                  Fuera de la lista · {Math.max(0, visibleProducts.length - items.length)}
+                  Fuera de la lista · {visibleProducts.filter(product => !itemByProductId.has(product.id)).length}
                 </button>
                 <button type="button" aria-pressed={marginFilter === 'low'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('all'); setMarginFilter('low'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', marginFilter === 'low' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   Ganancia baja · {lowMarginProductCount}
