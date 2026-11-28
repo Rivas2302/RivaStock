@@ -457,6 +457,12 @@ export interface PublicResellerSupplierRound {
   products: Array<Pick<PublicCatalogProduct, 'id' | 'name' | 'categoryId' | 'category' | 'salePrice' | 'imageUrl' | 'images'>>;
 }
 
+export interface ResellerCatalogSettings {
+  mode: 'all' | 'categories';
+  categoryIds: string[];
+  showOtherProducts: boolean;
+}
+
 export interface CatalogConfig {
   id: string;
   ownerUid: string;
@@ -478,6 +484,7 @@ export interface CatalogConfig {
   showStockQuantity: boolean;
   categoryPhotosEnabled?: boolean;
   categoryPhotoOverrides?: Record<string, string>;
+  resellerCategorySettings?: ResellerCatalogSettings | null;
   enabled: boolean;
   welcomeMessage: string;
   primaryColor: string;
